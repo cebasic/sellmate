@@ -1,0 +1,32 @@
+{
+  "name": "sellmate",
+  "version": "1.0.0",
+  "description": "Sistema de ventas autónomo por WhatsApp con IA configurable",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "concurrently \"node server/index.js\" \"npm run dev:client\"",
+    "dev:client": "cd client && npx vite --port 5173",
+    "build": "cd client && npm install && npx vite build",
+    "heroku-postbuild": "npm run build",
+    "postinstall": "cd client && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@whiskeysockets/baileys": "^6.7.16",
+    "bcryptjs": "^2.4.3",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.3",
+    "mysql2": "^3.12.0"
+  }
+}
