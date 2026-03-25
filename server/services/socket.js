@@ -48,7 +48,7 @@ function setupSocket(io) {
         'INSERT INTO messages (conversation_id, sender, sender_name, content, message_type) VALUES (?, ?, ?, ?, ?)',
         [conversation_id, 'agent', socket.user.name, content, 'text']
       );
-      const savedMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [result.insertId]);
+      const savedMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [result.lastInsertRowid]);
 
       await dbRun(`UPDATE conversations SET last_message_at = NOW() WHERE id = ?`, [conversation_id]);
       const updatedConv = await dbGet('SELECT * FROM conversations WHERE id = ?', [conversation_id]);

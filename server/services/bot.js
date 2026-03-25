@@ -36,7 +36,7 @@ async function handleIncomingMessage(tenantId, phoneNumber, contactName, message
       `INSERT INTO conversations (tenant_id, phone_number, contact_name, status) VALUES (?, ?, ?, 'bot')`,
       [tenantId, phoneNumber, contactName || phoneNumber]
     );
-    conversation = await dbGet('SELECT * FROM conversations WHERE id = ?', [result.insertId]);
+    conversation = await dbGet('SELECT * FROM conversations WHERE id = ?', [result.lastInsertRowid]);
   } else {
     await dbRun(
       `UPDATE conversations SET contact_name = COALESCE(NULLIF(?, ''), contact_name), last_message_at = NOW() WHERE id = ?`,
@@ -50,7 +50,7 @@ async function handleIncomingMessage(tenantId, phoneNumber, contactName, message
     'INSERT INTO messages (conversation_id, sender, sender_name, content, message_type, image_data) VALUES (?, ?, ?, ?, ?, ?)',
     [conversation.id, 'customer', contactName || phoneNumber, messageContent, messageType || 'text', imageBase64]
   );
-  const savedMessage = await dbGet('SELECT * FROM messages WHERE id = ?', [msgResult.insertId]);
+  const savedMessage = await dbGet('SELECT * FROM messages WHERE id = ?', [msgResult.lastInsertRowid]);
 
   // Emit to tenant room
   if (io) {
@@ -72,7 +72,7 @@ async function handleIncomingMessage(tenantId, phoneNumber, contactName, message
       'INSERT INTO messages (conversation_id, sender, sender_name, content, message_type) VALUES (?, ?, ?, ?, ?)',
       [conversation.id, 'bot', settings.bot_name || 'SellMate', offlineMsg, 'text']
     );
-    const savedOfflineMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [offlineMsgResult.insertId]);
+    const savedOfflineMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [offlineMsgResult.lastInsertRowid]);
     await dbRun(`UPDATE conversations SET last_message_at = NOW() WHERE id = ?`, [conversation.id]);
 
     if (io) {
@@ -232,7 +232,7 @@ IMPORTANTE: Tu respuesta debe ser UNICAMENTE el JSON, sin texto adicional, sin b
            appointmentData.date, appointmentData.time,
            appointmentData.duration_minutes || 60]
         );
-        const newAppt = await dbGet('SELECT * FROM appointments WHERE id = ?', [apptResult.insertId]);
+        const newAppt = await dbGet('SELECT * FROM appointments WHERE id = ?', [apptResult.lastInsertRowid]);
         if (io) {
           io.to(`tenant:${tenantId}`).emit('appointment:new', newAppt);
         }
@@ -256,7 +256,7 @@ IMPORTANTE: Tu respuesta debe ser UNICAMENTE el JSON, sin texto adicional, sin b
       'INSERT INTO messages (conversation_id, sender, sender_name, content, message_type) VALUES (?, ?, ?, ?, ?)',
       [conversation.id, 'bot', settings.bot_name, botResponse, 'text']
     );
-    const savedBotMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [botMsg.insertId]);
+    const savedBotMsg = await dbGet('SELECT * FROM messages WHERE id = ?', [botMsg.lastInsertRowid]);
 
     await dbRun(`UPDATE conversations SET last_message_at = NOW() WHERE id = ?`, [conversation.id]);
 
