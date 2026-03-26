@@ -12,21 +12,21 @@ const MAX_TOOL_ROUNDS = 5; // Max tool-use iterations to prevent infinite loops
 // ────────────────── Usage Tracking ──────────────────
 
 // Cost per 1M tokens
-// Official pricing per 1M tokens (USD) - verified March 2026
+// Official pricing per 1M tokens (USD) - updated March 2026
 const MODEL_RATES = {
-  // OpenAI
+  // OpenAI - GPT-5
+  'gpt-5-nano': { input: 0.05, output: 0.40 },
+  'gpt-5-mini': { input: 0.25, output: 2.00 },
+  'gpt-5': { input: 1.25, output: 10.00 },
+  // OpenAI - GPT-4.1
   'gpt-4.1-nano': { input: 0.10, output: 0.40 },
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'gpt-4.1-mini': { input: 0.40, output: 1.60 },
-  'o1-mini': { input: 1.10, output: 4.40 },
-  'o3-mini': { input: 1.10, output: 4.40 },
-  'o4-mini': { input: 1.10, output: 4.40 },
   'gpt-4.1': { input: 2.00, output: 8.00 },
-  'o3': { input: 2.00, output: 8.00 },
+  // OpenAI - GPT-4o
   'gpt-4o': { input: 2.50, output: 10.00 },
-  'chatgpt-4o-latest': { input: 2.50, output: 10.00 },
+  'chatgpt-4o-latest': { input: 5.00, output: 15.00 },
   'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'o1': { input: 15.00, output: 60.00 },
   // Anthropic
   'claude-haiku-4-5': { input: 1.00, output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
@@ -36,6 +36,9 @@ const MODEL_RATES = {
   'claude-opus-4-5': { input: 5.00, output: 25.00 },
   'claude-opus-4-0': { input: 15.00, output: 75.00 },
   'claude-opus-4-1': { input: 15.00, output: 75.00 },
+  // DeepSeek
+  'deepseek-chat': { input: 0.27, output: 1.10 },
+  'deepseek-reasoner': { input: 0.55, output: 2.19 },
   // Gemini
   'gemini-2.0-flash': { input: 0.10, output: 0.40 },
   'gemini-2.5-flash': { input: 0.30, output: 2.50 },
@@ -95,6 +98,14 @@ function buildRequestOptions(settings) {
       hostname: 'generativelanguage.googleapis.com',
       path: `/v1beta/models/${model}:generateContent?key=${apiKey}`,
       headers: { 'Content-Type': 'application/json' },
+      model
+    };
+  }
+  if (provider === 'deepseek') {
+    return {
+      hostname: 'api.deepseek.com',
+      path: '/chat/completions',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       model
     };
   }

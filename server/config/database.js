@@ -72,13 +72,28 @@ async function initDb() {
         label VARCHAR(255) NOT NULL DEFAULT '',
         provider VARCHAR(20) NOT NULL DEFAULT 'openai',
         api_key VARCHAR(500) NOT NULL,
-        model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
         custom_endpoint VARCHAR(500) DEFAULT '',
-        is_active TINYINT(1) NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id),
         INDEX idx_ai_keys_tenant (tenant_id)
       )`,
+      // AI favorite models
+      `CREATE TABLE IF NOT EXISTS ai_models (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        ai_key_id INT NOT NULL,
+        model VARCHAR(100) NOT NULL,
+        label VARCHAR(255) NOT NULL DEFAULT '',
+        is_active TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (ai_key_id) REFERENCES ai_keys(id) ON DELETE CASCADE,
+        INDEX idx_ai_models_tenant (tenant_id)
+      )`,
+      // Migrate old ai_keys data (if model column exists) to new ai_models table
+      // Drop old columns from ai_keys if they exist
+      "ALTER TABLE ai_keys DROP COLUMN model",
+      "ALTER TABLE ai_keys DROP COLUMN is_active",
     ];
     for (const sql of migrations) {
       try { await pool.execute(sql); } catch (e) { /* already exists */ }

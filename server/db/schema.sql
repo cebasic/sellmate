@@ -203,19 +203,31 @@ CREATE TABLE IF NOT EXISTS tenant_modules (
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
--- AI API keys (multiple per tenant)
+-- AI API keys (one per provider per tenant)
 CREATE TABLE IF NOT EXISTS ai_keys (
   id INT AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT NOT NULL,
   label VARCHAR(255) NOT NULL DEFAULT '',
   provider VARCHAR(20) NOT NULL DEFAULT 'openai',
   api_key VARCHAR(500) NOT NULL,
-  model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
   custom_endpoint VARCHAR(500) DEFAULT '',
-  is_active TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   INDEX idx_ai_keys_tenant (tenant_id)
+);
+
+-- AI favorite models (reference a key, one is active)
+CREATE TABLE IF NOT EXISTS ai_models (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NOT NULL,
+  ai_key_id INT NOT NULL,
+  model VARCHAR(100) NOT NULL,
+  label VARCHAR(255) NOT NULL DEFAULT '',
+  is_active TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (ai_key_id) REFERENCES ai_keys(id) ON DELETE CASCADE,
+  INDEX idx_ai_models_tenant (tenant_id)
 );
 
 -- AI usage tracking per tenant

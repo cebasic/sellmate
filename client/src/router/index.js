@@ -18,12 +18,18 @@ const routes = [
   { path: '/ai-usage', name: 'AIUsage', component: () => import('../views/AIUsage.vue'), meta: { requiresAuth: true } },
   { path: '/clients', name: 'Clients', component: () => import('../views/Clients.vue') },
   { path: '/orders', name: 'Orders', component: () => import('../views/Orders.vue') },
-  { path: '/cita/:token', name: 'AppointmentConfirm', component: () => import('../views/AppointmentConfirm.vue'), meta: { public: true } }
+  { path: '/cita/:token', name: 'AppointmentConfirm', component: () => import('../views/AppointmentConfirm.vue'), meta: { public: true } },
+  { path: '/privacidad', name: 'Privacy', component: () => import('../views/Privacy.vue'), meta: { public: true } },
+  { path: '/terminos', name: 'Terms', component: () => import('../views/Terms.vue'), meta: { public: true } }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0 }
+  }
 })
 
 router.beforeEach(async (to, from, next) => {

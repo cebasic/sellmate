@@ -76,10 +76,23 @@ router.put('/online-status', authMiddleware, requireTenant, async (req, res) => 
 router.get('/models', authMiddleware, requireTenant, async (req, res) => {
   try {
     const settings = await dbGet('SELECT * FROM settings WHERE tenant_id = ?', [req.tenantId]);
-    const provider = req.query.provider || settings?.ai_provider || 'openai';
-    const rawKey = req.query.api_key;
-    const apiKey = (rawKey && !rawKey.startsWith('****')) ? rawKey : (settings?.ai_api_key || '');
-    const customEndpoint = req.query.custom_endpoint || settings?.ai_custom_endpoint || '';
+
+    // Support fetching by ai_key_id (for the model picker)
+    let provider, apiKey, customEndpoint;
+    if (req.query.ai_key_id) {
+      const keyRow = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [req.query.ai_key_id, req.tenantId]);
+      if (keyRow) {
+        provider = keyRow.provider;
+        apiKey = keyRow.api_key;
+        customEndpoint = keyRow.custom_endpoint || '';
+      }
+    }
+    if (!provider) {
+      provider = req.query.provider || settings?.ai_provider || 'openai';
+      const rawKey = req.query.api_key;
+      apiKey = (rawKey && !rawKey.startsWith('****')) ? rawKey : (settings?.ai_api_key || '');
+      customEndpoint = req.query.custom_endpoint || settings?.ai_custom_endpoint || '';
+    }
 
     let models = [];
 
@@ -90,7 +103,7 @@ router.get('/models', authMiddleware, requireTenant, async (req, res) => {
         });
         const data = await response.json();
         if (data.data) {
-          const chatPrefixes = ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o3', 'chatgpt-4o'];
+          const chatPrefixes = ['gpt-5', 'gpt-4.1', 'gpt-4o', 'gpt-4-turbo', 'chatgpt-4o'];
           models = data.data
             .filter(m => chatPrefixes.some(p => m.id.startsWith(p)))
             .map(m => ({ id: m.id, name: m.id }))
@@ -130,6 +143,21 @@ router.get('/models', authMiddleware, requireTenant, async (req, res) => {
           { id: 'gemini-2.5-pro-preview-05-06', name: 'Gemini 2.5 Pro' },
           { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
           { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+        ];
+      }
+    } else if (provider === 'deepseek') {
+      try {
+        const response = await fetch('https://api.deepseek.com/models', {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        const data = await response.json();
+        if (data.data) {
+          models = data.data.map(m => ({ id: m.id, name: m.id })).sort((a, b) => a.id.localeCompare(b.id));
+        }
+      } catch {
+        models = [
+          { id: 'deepseek-chat', name: 'DeepSeek Chat (V3)' },
+          { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1)' },
         ];
       }
     } else if (provider === 'custom') {
@@ -177,10 +205,12 @@ router.post('/test-ai', authMiddleware, adminOnly, requireTenant, async (req, re
   try {
     let result;
 
-    if (provider === 'openai' || provider === 'custom') {
+    if (provider === 'openai' || provider === 'custom' || provider === 'deepseek') {
       const baseUrl = provider === 'custom'
         ? (custom_endpoint || 'https://api.openai.com/v1/chat/completions')
-        : 'https://api.openai.com/v1/chat/completions';
+        : provider === 'deepseek'
+          ? 'https://api.deepseek.com/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions';
       const response = await fetch(baseUrl, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${api_key}`, 'Content-Type': 'application/json' },
@@ -238,133 +268,134 @@ router.post('/test-ai', authMiddleware, adminOnly, requireTenant, async (req, re
 
 // ===== AI KEYS CRUD =====
 
-// GET /api/settings/ai-keys - List all API keys for this tenant
+// GET /api/settings/ai-keys - List all API keys
 router.get('/ai-keys', authMiddleware, adminOnly, requireTenant, async (req, res) => {
   try {
-    const keys = await dbAll('SELECT * FROM ai_keys WHERE tenant_id = ? ORDER BY is_active DESC, created_at DESC', [req.tenantId]);
-    // Mask the api_key for security
-    const masked = keys.map(k => ({
-      ...k,
-      api_key_masked: '****' + k.api_key.slice(-4),
-      api_key: undefined
-    }));
+    const keys = await dbAll('SELECT * FROM ai_keys WHERE tenant_id = ? ORDER BY created_at DESC', [req.tenantId]);
+    const masked = keys.map(k => ({ ...k, api_key_masked: '****' + k.api_key.slice(-4), api_key: undefined }));
     res.json({ keys: masked });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // POST /api/settings/ai-keys - Add a new API key
 router.post('/ai-keys', authMiddleware, adminOnly, requireTenant, async (req, res) => {
   try {
-    const { label, provider, api_key, model, custom_endpoint } = req.body;
-    if (!provider || !api_key) {
-      return res.status(400).json({ error: 'Provider y API key son requeridos' });
-    }
+    const { label, provider, api_key, custom_endpoint } = req.body;
+    if (!provider || !api_key) return res.status(400).json({ error: 'Provider y API key son requeridos' });
+    const result = await dbRun(
+      `INSERT INTO ai_keys (tenant_id, label, provider, api_key, custom_endpoint) VALUES (?, ?, ?, ?, ?)`,
+      [req.tenantId, label || `${provider} key`, provider, api_key, custom_endpoint || '']
+    );
+    res.json({ id: result.lastInsertRowid });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-    // Check if there are existing keys
-    const existing = await dbAll('SELECT id FROM ai_keys WHERE tenant_id = ?', [req.tenantId]);
-    const isActive = existing.length === 0 ? 1 : 0; // First key is auto-active
+// DELETE /api/settings/ai-keys/:id
+router.delete('/ai-keys/:id', authMiddleware, adminOnly, requireTenant, async (req, res) => {
+  try {
+    const key = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!key) return res.status(404).json({ error: 'Key no encontrada' });
+    // Cascade deletes ai_models referencing this key
+    await dbRun('DELETE FROM ai_keys WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    // If active model used this key, clear settings
+    const activeModel = await dbGet('SELECT * FROM ai_models WHERE tenant_id = ? AND is_active = 1', [req.tenantId]);
+    if (!activeModel) {
+      await dbRun(`UPDATE settings SET ai_api_key='', ai_model='gpt-4o-mini' WHERE tenant_id=?`, [req.tenantId]);
+    }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ===== AI MODELS (favorites) CRUD =====
+
+// GET /api/settings/ai-models - List all favorite models with their key info
+router.get('/ai-models', authMiddleware, adminOnly, requireTenant, async (req, res) => {
+  try {
+    const models = await dbAll(
+      `SELECT m.*, k.provider, k.label as key_label, k.custom_endpoint
+       FROM ai_models m JOIN ai_keys k ON m.ai_key_id = k.id
+       WHERE m.tenant_id = ? ORDER BY m.is_active DESC, m.created_at DESC`,
+      [req.tenantId]
+    );
+    res.json({ models });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/settings/ai-models - Add a favorite model
+router.post('/ai-models', authMiddleware, adminOnly, requireTenant, async (req, res) => {
+  try {
+    const { ai_key_id, model, label } = req.body;
+    if (!ai_key_id || !model) return res.status(400).json({ error: 'Key y modelo son requeridos' });
+    const key = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [ai_key_id, req.tenantId]);
+    if (!key) return res.status(404).json({ error: 'Key no encontrada' });
+
+    // If no models exist yet, make this one active
+    const existing = await dbAll('SELECT id FROM ai_models WHERE tenant_id = ?', [req.tenantId]);
+    const isActive = existing.length === 0 ? 1 : 0;
 
     const result = await dbRun(
-      `INSERT INTO ai_keys (tenant_id, label, provider, api_key, model, custom_endpoint, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.tenantId, label || `${provider} key`, provider, api_key, model || 'gpt-4o-mini', custom_endpoint || '', isActive]
+      `INSERT INTO ai_models (tenant_id, ai_key_id, model, label, is_active) VALUES (?, ?, ?, ?, ?)`,
+      [req.tenantId, ai_key_id, model, label || model, isActive]
     );
 
-    // If this is the first key or is_active, sync to settings
+    // Sync to settings if active
     if (isActive) {
       await dbRun(
         `UPDATE settings SET ai_provider=?, ai_api_key=?, ai_model=?, ai_custom_endpoint=? WHERE tenant_id=?`,
-        [provider, api_key, model || 'gpt-4o-mini', custom_endpoint || '', req.tenantId]
+        [key.provider, key.api_key, model, key.custom_endpoint || '', req.tenantId]
       );
     }
 
     res.json({ id: result.lastInsertRowid, is_active: !!isActive });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/settings/ai-keys/:id/activate - Set a key as the active one
-router.put('/ai-keys/:id/activate', authMiddleware, adminOnly, requireTenant, async (req, res) => {
+// PUT /api/settings/ai-models/:id/activate - Set a model as active
+router.put('/ai-models/:id/activate', authMiddleware, adminOnly, requireTenant, async (req, res) => {
   try {
-    const keyId = req.params.id;
-    const key = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [keyId, req.tenantId]);
-    if (!key) return res.status(404).json({ error: 'Key no encontrada' });
+    const modelRow = await dbGet(
+      `SELECT m.*, k.provider, k.api_key, k.custom_endpoint FROM ai_models m JOIN ai_keys k ON m.ai_key_id = k.id WHERE m.id = ? AND m.tenant_id = ?`,
+      [req.params.id, req.tenantId]
+    );
+    if (!modelRow) return res.status(404).json({ error: 'Modelo no encontrado' });
 
-    // Deactivate all, then activate selected
-    await dbRun('UPDATE ai_keys SET is_active = 0 WHERE tenant_id = ?', [req.tenantId]);
-    await dbRun('UPDATE ai_keys SET is_active = 1 WHERE id = ? AND tenant_id = ?', [keyId, req.tenantId]);
+    await dbRun('UPDATE ai_models SET is_active = 0 WHERE tenant_id = ?', [req.tenantId]);
+    await dbRun('UPDATE ai_models SET is_active = 1 WHERE id = ?', [req.params.id]);
 
-    // Sync to settings table
+    // Sync to settings
     await dbRun(
       `UPDATE settings SET ai_provider=?, ai_api_key=?, ai_model=?, ai_custom_endpoint=? WHERE tenant_id=?`,
-      [key.provider, key.api_key, key.model, key.custom_endpoint || '', req.tenantId]
+      [modelRow.provider, modelRow.api_key, modelRow.model, modelRow.custom_endpoint || '', req.tenantId]
     );
 
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/settings/ai-keys/:id - Update a key
-router.put('/ai-keys/:id', authMiddleware, adminOnly, requireTenant, async (req, res) => {
+// DELETE /api/settings/ai-models/:id
+router.delete('/ai-models/:id', authMiddleware, adminOnly, requireTenant, async (req, res) => {
   try {
-    const keyId = req.params.id;
-    const existing = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [keyId, req.tenantId]);
-    if (!existing) return res.status(404).json({ error: 'Key no encontrada' });
+    const modelRow = await dbGet('SELECT * FROM ai_models WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!modelRow) return res.status(404).json({ error: 'Modelo no encontrado' });
 
-    const { label, model, custom_endpoint } = req.body;
-    await dbRun(
-      `UPDATE ai_keys SET label=?, model=?, custom_endpoint=? WHERE id = ? AND tenant_id = ?`,
-      [label ?? existing.label, model ?? existing.model, custom_endpoint ?? existing.custom_endpoint, keyId, req.tenantId]
-    );
+    await dbRun('DELETE FROM ai_models WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
 
-    // If this is the active key, sync to settings
-    if (existing.is_active) {
-      await dbRun(
-        `UPDATE settings SET ai_model=?, ai_custom_endpoint=? WHERE tenant_id=?`,
-        [model ?? existing.model, custom_endpoint ?? existing.custom_endpoint, req.tenantId]
+    // If was active, activate next or clear
+    if (modelRow.is_active) {
+      const next = await dbGet(
+        `SELECT m.*, k.provider, k.api_key, k.custom_endpoint FROM ai_models m JOIN ai_keys k ON m.ai_key_id = k.id WHERE m.tenant_id = ? ORDER BY m.created_at DESC LIMIT 1`,
+        [req.tenantId]
       );
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /api/settings/ai-keys/:id - Delete a key
-router.delete('/ai-keys/:id', authMiddleware, adminOnly, requireTenant, async (req, res) => {
-  try {
-    const keyId = req.params.id;
-    const key = await dbGet('SELECT * FROM ai_keys WHERE id = ? AND tenant_id = ?', [keyId, req.tenantId]);
-    if (!key) return res.status(404).json({ error: 'Key no encontrada' });
-
-    await dbRun('DELETE FROM ai_keys WHERE id = ? AND tenant_id = ?', [keyId, req.tenantId]);
-
-    // If deleted key was active, activate the next one
-    if (key.is_active) {
-      const next = await dbGet('SELECT * FROM ai_keys WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1', [req.tenantId]);
       if (next) {
-        await dbRun('UPDATE ai_keys SET is_active = 1 WHERE id = ?', [next.id]);
-        await dbRun(
-          `UPDATE settings SET ai_provider=?, ai_api_key=?, ai_model=?, ai_custom_endpoint=? WHERE tenant_id=?`,
-          [next.provider, next.api_key, next.model, next.custom_endpoint || '', req.tenantId]
-        );
+        await dbRun('UPDATE ai_models SET is_active = 1 WHERE id = ?', [next.id]);
+        await dbRun(`UPDATE settings SET ai_provider=?, ai_api_key=?, ai_model=?, ai_custom_endpoint=? WHERE tenant_id=?`,
+          [next.provider, next.api_key, next.model, next.custom_endpoint || '', req.tenantId]);
       } else {
-        await dbRun(
-          `UPDATE settings SET ai_api_key='', ai_model='gpt-4o-mini' WHERE tenant_id=?`,
-          [req.tenantId]
-        );
+        await dbRun(`UPDATE settings SET ai_api_key='', ai_model='gpt-4o-mini' WHERE tenant_id=?`, [req.tenantId]);
       }
     }
-
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ===== WHITELIST CRUD =====
