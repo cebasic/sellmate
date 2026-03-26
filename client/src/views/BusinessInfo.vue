@@ -53,12 +53,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useSettingsStore } from '../stores/settings'
 import api from '../lib/api'
 
 const auth = useAuthStore()
+const settingsStore = useSettingsStore()
 const form = ref({ name: '', description: '', address: '', phone: '', hours: '', policies: '', extra_info: '' })
+const formLoaded = ref(false)
 const saving = ref(false)
 const saved = ref(false)
 const generatingDesc = ref(false)
@@ -66,7 +69,19 @@ const generatingDesc = ref(false)
 onMounted(async () => {
   const { data } = await api.get('/business')
   if (data.business) form.value = { ...data.business }
+  formLoaded.value = true
+  if (form.value.name !== undefined) {
+    settingsStore.patchBusinessInfo({ name: form.value.name })
+  }
 })
+
+watch(
+  () => form.value.name,
+  (name) => {
+    if (!formLoaded.value) return
+    settingsStore.patchBusinessInfo({ name: name ?? '' })
+  }
+)
 
 async function generateDescription() {
   if (!form.value.name?.trim() || generatingDesc.value) return
@@ -88,7 +103,8 @@ async function save() {
   saving.value = true
   saved.value = false
   try {
-    await api.put('/business', form.value)
+    const { data } = await api.put('/business', form.value)
+    if (data?.business) settingsStore.patchBusinessInfo(data.business)
     saved.value = true
     setTimeout(() => saved.value = false, 3000)
   } catch (err) {

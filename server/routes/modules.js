@@ -52,10 +52,17 @@ router.put('/:key', authMiddleware, adminOnly, requireTenant, async (req, res) =
     if (!MODULE_DEFINITIONS[key]) return res.status(400).json({ error: 'Módulo no válido' });
 
     const { enabled, config } = req.body;
-    await dbRun(
-      'INSERT INTO tenant_modules (tenant_id, module_key, enabled, config) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), config = VALUES(config)',
-      [req.tenantId, key, enabled ? 1 : 0, config ? JSON.stringify(config) : null]
-    );
+    if (config !== undefined) {
+      await dbRun(
+        'INSERT INTO tenant_modules (tenant_id, module_key, enabled, config) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), config = VALUES(config)',
+        [req.tenantId, key, enabled ? 1 : 0, JSON.stringify(config)]
+      );
+    } else {
+      await dbRun(
+        'INSERT INTO tenant_modules (tenant_id, module_key, enabled) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)',
+        [req.tenantId, key, enabled ? 1 : 0]
+      );
+    }
 
     res.json({ key, enabled: !!enabled });
   } catch (err) {

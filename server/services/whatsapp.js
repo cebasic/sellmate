@@ -200,6 +200,14 @@ class WhatsAppManager {
         try { await dbRun('UPDATE settings SET whatsapp_connected = 1 WHERE tenant_id = ?', [tenantId]); } catch (e) {}
         this._emitStatus(tenantId);
         console.log(`[WA:${tenantId}] Connected successfully!`);
+
+        // Set initial presence based on online_status setting
+        try {
+          const s = await dbGet('SELECT online_status FROM settings WHERE tenant_id = ?', [tenantId]);
+          const presence = (s && s.online_status) ? 'available' : 'unavailable';
+          await sock.sendPresenceUpdate(presence);
+          console.log(`[WA:${tenantId}] Initial presence: ${presence}`);
+        } catch (e) { /* ignore */ }
       }
 
       if (connection === 'close') {
@@ -337,6 +345,19 @@ class WhatsAppManager {
     }
     const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
     await conn.sock.sendMessage(jid, { text });
+  }
+
+  async sendDocument(tenantId, phoneNumber, buffer, mimetype, fileName) {
+    const conn = this._getConn(tenantId);
+    if (!conn.sock || conn.status !== 'connected') {
+      throw new Error('WhatsApp no está conectado');
+    }
+    const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+    await conn.sock.sendMessage(jid, {
+      document: buffer,
+      mimetype,
+      fileName
+    });
   }
 
   async sendPresence(tenantId, phoneNumber, presence) {

@@ -142,7 +142,7 @@ const submitLabel = computed(() => {
 })
 
 onMounted(async () => {
-  if (auth.isLoggedIn) return router.push('/')
+  if (auth.isLoggedIn) return router.push('/dashboard')
   try {
     const { data } = await api.get('/auth/check')
     isRegister.value = !data.hasAdmin
@@ -165,7 +165,7 @@ async function handleSubmit() {
     } else {
       await auth.login(email.value, password.value)
     }
-    router.push('/')
+    router.push('/dashboard')
   } catch (err) {
     error.value = err.response?.data?.error || 'Error de conexion'
   } finally {

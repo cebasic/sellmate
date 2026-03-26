@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-screen">
+  <div class="flex flex-col h-full">
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-3">
@@ -17,7 +17,9 @@
               {{ topicLabel(conv.topic) }}
             </span>
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ conv?.phone_number }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            <span v-if="parsePhone(conv?.phone_number).flag" class="mr-1">{{ parsePhone(conv?.phone_number).flag }}</span>{{ parsePhone(conv?.phone_number).localNumber }}
+          </p>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -131,6 +133,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useConversationsStore } from '../stores/conversations'
 import { useSocket } from '../composables/useSocket'
 import api from '../lib/api'
+import { parsePhone } from '../lib/phone'
 
 const route = useRoute()
 const router = useRouter()

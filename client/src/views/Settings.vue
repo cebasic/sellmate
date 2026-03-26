@@ -21,7 +21,9 @@
             :class="activeSection === sec.key
               ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'">
-            <span class="text-base">{{ sec.icon }}</span>
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
+              <path stroke-linecap="round" stroke-linejoin="round" :d="sectionIcons[sec.key]" />
+            </svg>
             {{ sec.label }}
           </button>
         </div>
@@ -29,7 +31,7 @@
 
       <!-- Mobile section selector -->
       <select v-model="activeSection" class="md:hidden w-full mb-4 px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm">
-        <option v-for="sec in sections" :key="sec.key" :value="sec.key">{{ sec.icon }} {{ sec.label }}</option>
+        <option v-for="sec in sections" :key="sec.key" :value="sec.key">{{ sec.label }}</option>
       </select>
 
       <!-- Content -->
@@ -60,6 +62,21 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mensaje de despedida</label>
                 <textarea v-model="form.farewell_message" rows="2" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"></textarea>
               </div>
+
+              <!-- Bot always on -->
+              <div class="flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
+                <div class="pr-4">
+                  <p class="text-sm font-medium text-gray-800 dark:text-white">Bot activo en modo offline</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">El bot sigue respondiendo aunque el negocio este marcado como offline. Si se desactiva, se envia el mensaje de despedida.</p>
+                </div>
+                <button @click="form.bot_always_on = form.bot_always_on ? 0 : 1"
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0"
+                  :class="form.bot_always_on ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                    :class="form.bot_always_on ? 'translate-x-6' : 'translate-x-1'"></span>
+                </button>
+              </div>
+
               <div class="flex items-center gap-3 pt-2">
                 <button @click="save" :disabled="saving" class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                   {{ saving ? 'Guardando...' : 'Guardar' }}
@@ -127,110 +144,457 @@
         <!-- ===== MODULOS ===== -->
         <template v-if="activeSection === 'modules'">
           <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between mb-2">
               <div>
                 <h3 class="text-base font-semibold text-gray-800 dark:text-white">Modulos</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Activa o desactiva funcionalidades segun tu negocio</p>
               </div>
               <router-link to="/setup" class="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 flex items-center gap-1">
-                ✨ Asistente de configuracion
+                ✨ Asistente
               </router-link>
             </div>
+
+            <!-- Active count -->
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
+              {{ allModules.filter(m => settingsStore.modules?.[m.key]).length }} de {{ allModules.length }} modulos activos
+            </p>
+
             <div class="space-y-2">
               <div v-for="mod in allModules" :key="mod.key"
-                class="flex items-center justify-between p-3.5 rounded-xl border transition-colors"
+                class="rounded-xl border transition-colors overflow-hidden"
                 :class="settingsStore.modules?.[mod.key]
-                  ? 'border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-900/10'
+                  ? 'border-primary-200 dark:border-primary-800 bg-primary-50/30 dark:bg-primary-900/10'
                   : 'border-gray-200 dark:border-gray-600'">
-                <div class="flex items-center gap-3">
-                  <span class="text-xl">{{ mod.icon }}</span>
-                  <div>
-                    <p class="text-sm font-medium text-gray-800 dark:text-white">{{ mod.name }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ mod.desc }}</p>
+
+                <!-- Header row (always visible) -->
+                <div class="flex items-center justify-between p-3.5 cursor-pointer" @click="expandedModule = expandedModule === mod.key ? null : mod.key">
+                  <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <span class="text-xl flex-shrink-0">{{ mod.icon }}</span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <p class="text-sm font-medium text-gray-800 dark:text-white">{{ mod.name }}</p>
+                        <span v-if="settingsStore.modules?.[mod.key]" class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 font-medium">Activo</span>
+                      </div>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ mod.desc }}</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3 flex-shrink-0 ml-3">
+                    <button @click.stop="toggleModule(mod.key)"
+                      class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                      :class="settingsStore.modules?.[mod.key] ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'">
+                      <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                        :class="settingsStore.modules?.[mod.key] ? 'translate-x-6' : 'translate-x-1'"></span>
+                    </button>
+                    <svg class="w-4 h-4 text-gray-400 transition-transform" :class="expandedModule === mod.key ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
                   </div>
                 </div>
-                <button @click="toggleModule(mod.key)"
-                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
-                  :class="settingsStore.modules?.[mod.key] ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'">
-                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-                    :class="settingsStore.modules?.[mod.key] ? 'translate-x-6' : 'translate-x-1'"></span>
-                </button>
+
+                <!-- Expanded details -->
+                <div v-if="expandedModule === mod.key" class="px-4 pb-4 border-t border-gray-100 dark:border-gray-700">
+                  <div class="pt-3 pl-9">
+                    <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">{{ mod.details }}</p>
+                    <ul class="space-y-1.5">
+                      <li v-for="feat in mod.features" :key="feat" class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <svg class="w-3.5 h-3.5 text-primary-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {{ feat }}
+                      </li>
+                    </ul>
+
+                    <!-- Order notification config -->
+                    <div v-if="mod.key === 'orders' && settingsStore.modules?.orders" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                      <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Notificaciones de pedidos</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Numeros de WhatsApp que recibiran una notificacion cuando llegue un nuevo pedido.</p>
+                      <div class="flex gap-2 mb-3">
+                        <input v-model="orderNotifyInput" placeholder="521234567890"
+                          class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                          @keyup.enter="addOrderNotifyNumber" />
+                        <button @click="addOrderNotifyNumber" :disabled="!orderNotifyInput.trim()"
+                          class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                          +
+                        </button>
+                      </div>
+                      <div v-if="orderNotifyNumbers.length === 0" class="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
+                        Sin numeros configurados
+                      </div>
+                      <div v-else class="space-y-1 mb-3">
+                        <div v-for="(num, idx) in orderNotifyNumbers" :key="idx"
+                          class="flex items-center justify-between bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600">
+                          <span class="text-sm font-mono text-gray-800 dark:text-white">{{ num }}</span>
+                          <button @click="removeOrderNotifyNumber(idx)" class="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                        </div>
+                      </div>
+                      <!-- Customer status notifications -->
+                      <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mt-4 mb-2">Notificar al cliente por WhatsApp</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Elige en que pasos se le envia un mensaje automatico al cliente sobre su pedido.</p>
+                      <div class="space-y-2 mb-4">
+                        <label v-for="step in customerNotifySteps" :key="step.key" class="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                          <input type="checkbox" v-model="customerNotifications[step.key]"
+                            class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                          <div class="flex-1">
+                            <span class="text-sm font-medium text-gray-800 dark:text-white">{{ step.label }}</span>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ step.preview }}</p>
+                          </div>
+                        </label>
+                      </div>
+
+                      <button @click="saveOrderNotifyConfig" :disabled="savingOrderConfig"
+                        class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                        {{ savingOrderConfig ? 'Guardando...' : 'Guardar configuracion' }}
+                      </button>
+                      <span v-if="savedOrderConfig" class="ml-2 text-green-600 text-sm">Guardado</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </template>
 
-        <!-- ===== IA ===== -->
-        <template v-if="activeSection === 'ai'">
+        <!-- ===== COLABORADORES ===== -->
+        <template v-if="activeSection === 'team'">
           <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-white mb-2">Inteligencia Artificial</h3>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Proveedor actual: <span class="font-medium text-gray-700 dark:text-gray-200">{{ form.ai_provider || 'No configurado' }}</span>
-              <span v-if="form.ai_model" class="text-gray-400"> ({{ form.ai_model }})</span>
-            </p>
-            <router-link to="/ai-settings"
-              class="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors">
-              Configurar proveedor de IA
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-            </router-link>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-base font-semibold text-gray-800 dark:text-white">Colaboradores</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Personas que pueden atender conversaciones desde la plataforma</p>
+              </div>
+              <button @click="showTeamForm = true" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                + Nuevo
+              </button>
+            </div>
+
+            <div v-if="teamMembers.length === 0" class="text-center py-10 text-gray-400 dark:text-gray-500">
+              <span class="text-3xl block mb-2">👥</span>
+              <p class="text-sm">No hay colaboradores aun</p>
+              <p class="text-xs mt-1">Agrega personas para que puedan atender conversaciones</p>
+            </div>
+            <div v-else class="space-y-2">
+              <div v-for="member in teamMembers" :key="member.id"
+                class="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 dark:border-gray-600">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-700 dark:text-blue-300 font-bold text-sm">
+                    {{ member.name.charAt(0).toUpperCase() }}
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-800 dark:text-white">{{ member.name }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ member.email }}</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                    :class="member.active ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300'">
+                    {{ member.active ? 'Activo' : 'Inactivo' }}
+                  </span>
+                  <button v-if="member.active" @click="deactivateMember(member.id)" class="text-xs text-red-400 hover:text-red-600">Desactivar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- New team member modal -->
+          <div v-if="showTeamForm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md shadow-xl">
+              <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-1">Nuevo colaborador</h3>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Esta persona podra iniciar sesion y atender conversaciones manualmente.</p>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre</label>
+                  <input v-model="teamForm.name" placeholder="Ej: Maria Lopez" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email</label>
+                  <input v-model="teamForm.email" type="email" placeholder="maria@ejemplo.com" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Contrasena</label>
+                  <input v-model="teamForm.password" type="password" placeholder="Minimo 6 caracteres" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+              <p v-if="teamFormError" class="text-red-500 text-sm mt-2">{{ teamFormError }}</p>
+              <div class="flex justify-end gap-2 mt-5">
+                <button @click="showTeamForm = false; teamFormError = ''" class="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm">Cancelar</button>
+                <button @click="createMember" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Crear colaborador</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ===== MI NEGOCIO ===== -->
+        <template v-if="activeSection === 'business'">
+          <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-white mb-4">Ajustes de mi negocio</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre del negocio</label>
+                <input v-model="businessForm.name" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Descripcion</label>
+                  <button @click="generateDescription" :disabled="generatingDesc || !businessForm.name?.trim()"
+                    class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <svg v-if="generatingDesc" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    <span v-else>✨</span>
+                    {{ generatingDesc ? 'Generando...' : 'Generar con IA' }}
+                  </button>
+                </div>
+                <textarea v-model="businessForm.description" rows="3" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Direccion</label>
+                  <input v-model="businessForm.address" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Telefono</label>
+                  <input v-model="businessForm.phone" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Horario de atencion</label>
+                <input v-model="businessForm.hours" placeholder="Ej: Lun-Vie 9am-6pm" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Politicas (envio, devoluciones, pagos)</label>
+                  <button @click="generateField('policies')" :disabled="generatingPolicies || !businessForm.name?.trim()"
+                    class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <svg v-if="generatingPolicies" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    <span v-else>✨</span>
+                    {{ generatingPolicies ? 'Generando...' : 'Generar con IA' }}
+                  </button>
+                </div>
+                <textarea v-model="businessForm.policies" rows="2" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Informacion adicional</label>
+                  <button @click="generateField('extra_info')" :disabled="generatingExtraInfo || !businessForm.name?.trim()"
+                    class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <svg v-if="generatingExtraInfo" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    <span v-else>✨</span>
+                    {{ generatingExtraInfo ? 'Generando...' : 'Generar con IA' }}
+                  </button>
+                </div>
+                <textarea v-model="businessForm.extra_info" rows="2" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+              </div>
+              <div class="flex items-center gap-3 pt-2">
+                <button @click="saveBusiness" :disabled="savingBusiness" class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  {{ savingBusiness ? 'Guardando...' : 'Guardar' }}
+                </button>
+                <p v-if="savedBusiness" class="text-green-600 text-sm">Guardado</p>
+              </div>
+            </div>
           </div>
         </template>
 
         <!-- ===== WHATSAPP ===== -->
         <template v-if="activeSection === 'whatsapp'">
-          <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-white mb-4">Conexion WhatsApp</h3>
-            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-5 border border-gray-200 dark:border-gray-600">
-              <div class="flex items-center justify-between mb-4">
+          <!-- Status Card -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <!-- Header with gradient -->
+            <div class="px-6 py-4" :class="settingsStore.whatsappStatus === 'connected' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-gray-500 to-gray-600 dark:from-gray-600 dark:to-gray-700'">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                      <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 01-4.243-1.214l-.252-.149-2.868.852.852-2.868-.149-.252A8 8 0 1112 20z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-white font-semibold text-sm">WhatsApp Business</h3>
+                    <p class="text-white/80 text-xs">Canal principal de mensajeria</p>
+                  </div>
+                </div>
                 <div class="flex items-center gap-2">
-                  <span class="relative flex h-3 w-3">
-                    <span v-if="settingsStore.whatsappStatus === 'connected'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-3 w-3" :class="{
-                      'bg-green-500': settingsStore.whatsappStatus === 'connected',
-                      'bg-yellow-500': settingsStore.whatsappStatus === 'connecting',
-                      'bg-gray-400': settingsStore.whatsappStatus === 'disconnected'
-                    }"></span>
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" :class="{
+                    'bg-white/20 text-white': settingsStore.whatsappStatus === 'connected',
+                    'bg-yellow-400/20 text-yellow-100': settingsStore.whatsappStatus === 'connecting',
+                    'bg-white/10 text-white/70': settingsStore.whatsappStatus === 'disconnected'
+                  }">
+                    <span class="relative flex h-2 w-2">
+                      <span v-if="settingsStore.whatsappStatus === 'connected'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2" :class="{
+                        'bg-white': settingsStore.whatsappStatus === 'connected',
+                        'bg-yellow-300': settingsStore.whatsappStatus === 'connecting',
+                        'bg-white/50': settingsStore.whatsappStatus === 'disconnected'
+                      }"></span>
+                    </span>
+                    {{ waStatusLabel }}
                   </span>
-                  <span class="text-sm font-medium" :class="{
-                    'text-green-700 dark:text-green-300': settingsStore.whatsappStatus === 'connected',
-                    'text-yellow-700 dark:text-yellow-300': settingsStore.whatsappStatus === 'connecting',
-                    'text-gray-600 dark:text-gray-400': settingsStore.whatsappStatus === 'disconnected'
-                  }">{{ waStatusLabel }}</span>
                 </div>
-                <div class="flex gap-2">
-                  <button v-if="settingsStore.whatsappStatus !== 'connected'" @click="connectWhatsApp" :disabled="waConnecting"
-                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                    {{ waConnecting ? 'Conectando...' : 'Conectar' }}
-                  </button>
-                  <button v-if="settingsStore.whatsappStatus === 'connected'" @click="disconnectWhatsApp" :disabled="waDisconnecting"
-                    class="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                    {{ waDisconnecting ? '...' : 'Desconectar' }}
-                  </button>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6">
+              <!-- Connected state -->
+              <div v-if="settingsStore.whatsappStatus === 'connected'" class="text-center py-6">
+                <div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <p class="text-sm font-medium text-gray-800 dark:text-white mb-1">Conectado y funcionando</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-5">Tu bot esta recibiendo y respondiendo mensajes</p>
+                <button @click="disconnectWhatsApp" :disabled="waDisconnecting"
+                  class="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium transition-colors">
+                  {{ waDisconnecting ? 'Desconectando...' : 'Desconectar WhatsApp' }}
+                </button>
+              </div>
+
+              <!-- QR Code -->
+              <div v-else-if="settingsStore.qrCode" class="text-center py-4">
+                <p class="text-sm font-medium text-gray-800 dark:text-white mb-1">Escanea el codigo QR</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Abre WhatsApp en tu telefono → Dispositivos vinculados → Vincular dispositivo</p>
+                <div class="inline-block p-3 bg-white rounded-2xl shadow-sm border border-gray-100">
+                  <img :src="settingsStore.qrCode" alt="QR Code" class="w-52 h-52" />
                 </div>
               </div>
 
-              <div v-if="settingsStore.qrCode" class="text-center py-4">
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Escanea con WhatsApp:</p>
-                <img :src="settingsStore.qrCode" alt="QR" class="mx-auto w-56 h-56 rounded-lg border border-gray-200 dark:border-gray-600" />
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">WhatsApp → Dispositivos vinculados → Vincular</p>
-              </div>
-
-              <div v-else-if="settingsStore.whatsappStatus === 'connecting' && !settingsStore.qrCode" class="text-center py-6">
-                <svg class="animate-spin h-8 w-8 text-primary-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24">
+              <!-- Loading QR -->
+              <div v-else-if="settingsStore.whatsappStatus === 'connecting'" class="text-center py-8">
+                <svg class="animate-spin h-10 w-10 text-primary-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Generando QR...</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300 font-medium">Preparando conexion...</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Generando codigo QR</p>
               </div>
 
-              <div v-else-if="settingsStore.whatsappStatus === 'connected'" class="text-center py-4">
-                <span class="text-4xl block mb-2">✅</span>
-                <p class="text-sm text-green-700 dark:text-green-300 font-medium">WhatsApp conectado</p>
+              <!-- Disconnected -->
+              <div v-else class="text-center py-8">
+                <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 5.636a9 9 0 010 12.728m-2.829-2.829a5 5 0 000-7.07m-4.243 9.9a9 9 0 01-4.95-4.95m2.122-2.122a5 5 0 017.07 0"/>
+                  </svg>
+                </div>
+                <p class="text-sm font-medium text-gray-800 dark:text-white mb-1">WhatsApp no conectado</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-5">Vincula tu numero de WhatsApp para que el bot pueda enviar y recibir mensajes</p>
+                <button @click="connectWhatsApp" :disabled="waConnecting"
+                  class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50 inline-flex items-center gap-2">
+                  <svg v-if="waConnecting" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                  {{ waConnecting ? 'Conectando...' : 'Conectar WhatsApp' }}
+                </button>
               </div>
 
-              <div v-if="settingsStore.waError" class="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <!-- Error -->
+              <div v-if="settingsStore.waError" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                <svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
                 <p class="text-sm text-red-700 dark:text-red-300">{{ settingsStore.waError }}</p>
               </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ===== PROVEEDOR DE IA ===== -->
+        <template v-if="activeSection === 'ai'">
+          <!-- Keys list -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-base font-semibold text-gray-800 dark:text-white">Llaves de API</h3>
+              <button @click="openAddKeyModal()"
+                class="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Agregar llave
+              </button>
+            </div>
+
+            <div v-if="aiKeysLoading" class="flex items-center justify-center py-10">
+              <svg class="animate-spin h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            </div>
+
+            <div v-else-if="aiKeys.length === 0" class="flex flex-col items-center py-10 text-center">
+              <div class="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-3">
+                <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+              </div>
+              <p class="text-sm font-medium text-gray-600 dark:text-gray-300">No tienes llaves configuradas</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Agrega una llave de API para empezar a usar el bot con IA</p>
+            </div>
+
+            <div v-else class="space-y-3">
+              <div v-for="akey in aiKeys" :key="akey.id"
+                class="flex items-center gap-4 p-4 rounded-xl border-2 transition-all"
+                :class="akey.is_active ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-900/10' : 'border-gray-200 dark:border-gray-600'">
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" :class="aiProviderBg(akey.provider)">
+                  <svg v-if="akey.provider === 'openai'" class="w-5 h-5 text-gray-800 dark:text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+                  <svg v-else-if="akey.provider === 'anthropic'" class="w-5 h-5 text-gray-800 dark:text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"/></svg>
+                  <svg v-else-if="akey.provider === 'gemini'" class="w-5 h-5" viewBox="0 0 24 24"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" fill="url(#gl)"/><defs><linearGradient id="gl" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs></svg>
+                  <svg v-else class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-semibold text-gray-800 dark:text-white truncate">{{ akey.label }}</p>
+                    <span v-if="akey.is_active" class="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">Activa</span>
+                  </div>
+                  <div class="flex items-center gap-3 mt-1">
+                    <span class="text-xs text-gray-500 dark:text-gray-400 capitalize">{{ akey.provider }}</span>
+                    <span class="text-xs text-gray-300 dark:text-gray-600">|</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ akey.model }}</span>
+                    <span class="text-xs text-gray-300 dark:text-gray-600">|</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">{{ akey.api_key_masked }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                  <button v-if="!akey.is_active" @click="activateAiKey(akey.id)" title="Usar esta llave" class="p-2 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  </button>
+                  <button @click="testAiKey(akey)" title="Probar conexion" :disabled="aiTestingId === akey.id" class="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40">
+                    <svg v-if="aiTestingId !== akey.id" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  </button>
+                  <button @click="aiDeleteTarget = akey; showAiDeleteModal = true" title="Eliminar" class="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p v-if="aiTestMsg" class="mt-3 text-sm" :class="aiTestSuccess ? 'text-green-600' : 'text-red-600'">{{ aiTestMsg }}</p>
+          </div>
+
+          <!-- Consumo -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-base font-semibold text-gray-800 dark:text-white">Consumo este mes</h3>
+              <router-link to="/ai-usage" class="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">Ver detalle</router-link>
+            </div>
+            <div v-if="aiUsageLoading" class="flex items-center justify-center py-6">
+              <svg class="animate-spin h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            </div>
+            <div v-else-if="aiUsage" class="grid grid-cols-3 gap-2">
+              <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 text-center">
+                <p class="text-lg font-bold text-gray-800 dark:text-white">{{ (aiUsage.total_requests || 0).toLocaleString() }}</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500">Requests</p>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 text-center">
+                <p class="text-lg font-bold text-gray-800 dark:text-white">{{ (aiUsage.total_tokens || 0).toLocaleString() }}</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500">Tokens</p>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 text-center">
+                <p class="text-lg font-bold text-emerald-600 dark:text-emerald-400">${{ Number(aiUsage.total_cost || 0).toFixed(2) }}</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500">Costo</p>
+              </div>
+            </div>
+            <div v-else class="text-center py-6">
+              <p class="text-sm text-gray-400 dark:text-gray-500">Sin datos de consumo aun</p>
             </div>
           </div>
         </template>
@@ -316,36 +680,328 @@
 
       </div>
     </div>
+
+    <!-- Add AI key modal -->
+    <Teleport to="body">
+      <Transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
+        <div v-if="showAiKeyModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/50" @click="showAiKeyModal = false"></div>
+          <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold text-gray-800 dark:text-white">Agregar llave de API</h3>
+              <button @click="showAiKeyModal = false" class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Proveedor</label>
+              <div class="grid grid-cols-4 gap-2">
+                <button v-for="prov in [{key:'openai',name:'OpenAI'},{key:'anthropic',name:'Anthropic'},{key:'gemini',name:'Gemini'},{key:'custom',name:'Custom'}]" :key="prov.key" @click="aiKeyForm.provider = prov.key"
+                  class="flex flex-col items-center p-3 rounded-xl border-2 transition-all text-center"
+                  :class="aiKeyForm.provider === prov.key ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'">
+                  <svg v-if="prov.key === 'openai'" class="w-7 h-7 mb-1.5 text-gray-800 dark:text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+                  <svg v-else-if="prov.key === 'anthropic'" class="w-7 h-7 mb-1.5 text-gray-800 dark:text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"/></svg>
+                  <svg v-else-if="prov.key === 'gemini'" class="w-7 h-7 mb-1.5" viewBox="0 0 24 24"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" fill="url(#gm2)"/><defs><linearGradient id="gm2" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs></svg>
+                  <svg v-else class="w-7 h-7 mb-1.5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                  <span class="text-xs font-semibold text-gray-800 dark:text-white">{{ prov.name }}</span>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre / etiqueta</label>
+              <input v-model="aiKeyForm.label" placeholder="Ej: OpenAI produccion" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+              <div class="relative">
+                <input v-model="aiKeyForm.api_key" :type="showAiModalKey ? 'text' : 'password'" placeholder="sk-..." class="w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+                <button @click="showAiModalKey = !showAiModalKey" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                  <svg v-if="!showAiModalKey" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                  <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Modelo</label>
+              <div class="relative">
+                <select v-model="aiKeyForm.model" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" :disabled="aiLoadingModels">
+                  <option value="">Seleccionar modelo...</option>
+                  <option v-for="m in aiModalModels" :key="typeof m === 'string' ? m : m.id" :value="typeof m === 'string' ? m : m.id">{{ typeof m === 'string' ? m : (m.name || m.id) }}</option>
+                </select>
+                <svg v-if="aiLoadingModels" class="animate-spin h-4 w-4 text-gray-400 absolute right-8 top-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+              </div>
+            </div>
+            <div v-if="aiKeyForm.provider === 'custom'">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint personalizado</label>
+              <input v-model="aiKeyForm.custom_endpoint" placeholder="https://your-api.com/v1/chat/completions" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <p v-if="aiKeyError" class="text-sm text-red-600">{{ aiKeyError }}</p>
+            <div class="flex items-center justify-end gap-3 pt-2">
+              <button @click="showAiKeyModal = false" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+              <button @click="saveAiKey" :disabled="aiKeySaving" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">{{ aiKeySaving ? 'Guardando...' : 'Guardar llave' }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Delete AI key modal -->
+    <Teleport to="body">
+      <Transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
+        <div v-if="showAiDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/50" @click="showAiDeleteModal = false"></div>
+          <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-1">Eliminar llave</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              Seguro que quieres eliminar <strong class="text-gray-700 dark:text-gray-200">{{ aiDeleteTarget?.label }}</strong>?
+              <span v-if="aiDeleteTarget?.is_active" class="block mt-1 text-amber-600 dark:text-amber-400 font-medium">Esta es la llave activa. Se activara otra automaticamente.</span>
+            </p>
+            <div class="flex items-center justify-center gap-3">
+              <button @click="showAiDeleteModal = false" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+              <button @click="deleteAiKey()" :disabled="aiDeleting" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">{{ aiDeleting ? 'Eliminando...' : 'Eliminar' }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { useAuthStore } from '../stores/auth'
 import api from '../lib/api'
 
 const settingsStore = useSettingsStore()
+const auth = useAuthStore()
 const form = ref(null)
+const aiUsage = ref(null)
+const aiUsageLoading = ref(false)
+
+// AI Keys state
+const aiKeys = ref([])
+const aiKeysLoading = ref(true)
+const aiTestingId = ref(null)
+const aiTestMsg = ref('')
+const aiTestSuccess = ref(false)
+const showAiKeyModal = ref(false)
+const showAiModalKey = ref(false)
+const aiKeySaving = ref(false)
+const aiKeyError = ref('')
+const aiLoadingModels = ref(false)
+const aiFetchedModels = ref(null)
+const aiKeyForm = ref({ provider: 'openai', label: '', api_key: '', model: '', custom_endpoint: '' })
+const showAiDeleteModal = ref(false)
+const aiDeleteTarget = ref(null)
+const aiDeleting = ref(false)
+
+const aiFallbackModels = {
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'gpt-4-turbo', 'o3-mini', 'o4-mini'],
+  anthropic: ['claude-haiku-4-5-20250315', 'claude-sonnet-4-6-20250514', 'claude-opus-4-6-20250514'],
+  gemini: ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  custom: ['gpt-4o-mini', 'gpt-4o']
+}
+const aiModalModels = computed(() => {
+  if (aiFetchedModels.value?.length > 0) return aiFetchedModels.value
+  return aiFallbackModels[aiKeyForm.value.provider] || aiFallbackModels.custom
+})
+
+function aiProviderBg(provider) {
+  return { openai: 'bg-emerald-100 dark:bg-emerald-900/30', anthropic: 'bg-amber-100 dark:bg-amber-900/30', gemini: 'bg-blue-100 dark:bg-blue-900/30', custom: 'bg-purple-100 dark:bg-purple-900/30' }[provider] || 'bg-gray-100 dark:bg-gray-700'
+}
+
+async function fetchAiKeys() {
+  aiKeysLoading.value = true
+  try { aiKeys.value = (await api.get('/settings/ai-keys')).data.keys || [] } catch (e) { aiKeys.value = [] } finally { aiKeysLoading.value = false }
+}
+
+async function fetchAiModels() {
+  const p = aiKeyForm.value.provider
+  if (!p) return
+  aiLoadingModels.value = true
+  try {
+    const params = { provider: p }
+    const k = aiKeyForm.value.api_key
+    if (k && !k.startsWith('****')) params.api_key = k
+    const { data } = await api.get('/settings/models', { params })
+    aiFetchedModels.value = data.models?.length > 0 ? data.models : null
+  } catch (e) { aiFetchedModels.value = null } finally { aiLoadingModels.value = false }
+}
+
+watch(() => aiKeyForm.value.provider, () => { aiKeyForm.value.model = ''; aiFetchedModels.value = null; fetchAiModels() })
+let aiKeyTimer = null
+watch(() => aiKeyForm.value.api_key, (v) => { clearTimeout(aiKeyTimer); if (v?.length > 10) aiKeyTimer = setTimeout(fetchAiModels, 800) })
+
+function openAddKeyModal() {
+  aiKeyForm.value = { provider: 'openai', label: '', api_key: '', model: '', custom_endpoint: '' }
+  aiKeyError.value = ''; showAiModalKey.value = false; aiFetchedModels.value = null; showAiKeyModal.value = true; fetchAiModels()
+}
+
+async function saveAiKey() {
+  if (!aiKeyForm.value.api_key) { aiKeyError.value = 'La API key es requerida'; return }
+  aiKeySaving.value = true; aiKeyError.value = ''
+  try {
+    await api.post('/settings/ai-keys', { label: aiKeyForm.value.label || `${aiKeyForm.value.provider} key`, provider: aiKeyForm.value.provider, api_key: aiKeyForm.value.api_key, model: aiKeyForm.value.model || (aiFallbackModels[aiKeyForm.value.provider]?.[0] || 'gpt-4o-mini'), custom_endpoint: aiKeyForm.value.custom_endpoint })
+    showAiKeyModal.value = false; await fetchAiKeys()
+    // Refresh settings form to reflect active key change
+    await settingsStore.fetchSettings(); if (settingsStore.settings) form.value = { ...settingsStore.settings }
+  } catch (e) { aiKeyError.value = e.response?.data?.error || 'Error al guardar' } finally { aiKeySaving.value = false }
+}
+
+async function activateAiKey(id) {
+  try { await api.put(`/settings/ai-keys/${id}/activate`); await fetchAiKeys(); await settingsStore.fetchSettings(); if (settingsStore.settings) form.value = { ...settingsStore.settings } } catch (e) { alert('Error al activar llave') }
+}
+
+async function testAiKey(key) {
+  aiTestingId.value = key.id; aiTestMsg.value = ''
+  try { const { data } = await api.post('/settings/test-ai', { provider: key.provider, model: key.model }); aiTestSuccess.value = true; aiTestMsg.value = `${key.label}: Conexion exitosa (${data.response_time_ms}ms)` }
+  catch (e) { aiTestSuccess.value = false; aiTestMsg.value = `${key.label}: ${e.response?.data?.error || 'Error de conexion'}` }
+  finally { aiTestingId.value = null; setTimeout(() => aiTestMsg.value = '', 5000) }
+}
+
+async function deleteAiKey() {
+  if (!aiDeleteTarget.value) return
+  aiDeleting.value = true
+  try { await api.delete(`/settings/ai-keys/${aiDeleteTarget.value.id}`); showAiDeleteModal.value = false; aiDeleteTarget.value = null; await fetchAiKeys(); await settingsStore.fetchSettings(); if (settingsStore.settings) form.value = { ...settingsStore.settings } }
+  catch (e) { alert('Error al eliminar llave') } finally { aiDeleting.value = false }
+}
+
 const saving = ref(false)
 const saved = ref(false)
 const activeSection = ref('bot')
+const expandedModule = ref(null)
 
 const sections = [
-  { key: 'bot', icon: '🤖', label: 'Bot' },
-  { key: 'modules', icon: '📦', label: 'Modulos' },
-  { key: 'ai', icon: '🧠', label: 'Inteligencia Artificial' },
-  { key: 'whatsapp', icon: '📱', label: 'WhatsApp' },
-  { key: 'mcp', icon: '🔌', label: 'MCP Servers' }
+  { key: 'bot', label: 'Bot' },
+  { key: 'business', label: 'Mi negocio' },
+  { key: 'modules', label: 'Modulos' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'ai', label: 'Proveedor de IA' },
+  { key: 'team', label: 'Colaboradores' },
+  { key: 'mcp', label: 'Integraciones' }
 ]
 
+const sectionIcons = {
+  bot: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  business: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+  modules: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z',
+  whatsapp: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+  ai: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z',
+  team: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+  mcp: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1'
+}
+
 const allModules = [
-  { key: 'products', icon: '📦', name: 'Productos / Servicios', desc: 'Catalogo de productos con precios' },
-  { key: 'orders', icon: '🛒', name: 'Pedidos', desc: 'Recibe y gestiona pedidos desde WhatsApp' },
-  { key: 'appointments', icon: '📅', name: 'Citas / Agenda', desc: 'Permite a clientes agendar citas' },
-  { key: 'quotes', icon: '💰', name: 'Cotizaciones', desc: 'Genera cotizaciones automaticas' },
-  { key: 'followups', icon: '💛', name: 'Fidelizacion', desc: 'Seguimiento automatico a clientes' },
-  { key: 'image_generation', icon: '🎨', name: 'Imagenes IA', desc: 'Genera imagenes con inteligencia artificial' }
+  {
+    key: 'products', icon: '📦', name: 'Productos / Servicios',
+    desc: 'Catalogo de productos con precios',
+    details: 'Gestiona tu catalogo de productos o servicios. El bot los conoce y puede recomendarlos a tus clientes durante la conversacion.',
+    features: ['Catalogo con nombre, precio, descripcion y stock', 'El bot recomienda productos segun lo que pide el cliente', 'Tabla con paginacion y busqueda en la interfaz', 'Soporte para categorias y estado activo/inactivo']
+  },
+  {
+    key: 'orders', icon: '🛒', name: 'Pedidos / Comandas',
+    desc: 'Recibe y gestiona pedidos desde WhatsApp',
+    details: 'Ideal para restaurantes y negocios de comida. Los clientes hacen pedidos por WhatsApp y el bot confirma items, cantidades y total.',
+    features: ['El bot toma pedidos del catalogo por conversacion', 'Confirma items, cantidades y precio total antes de procesar', 'Notificacion en tiempo real cuando llega un pedido', 'Historial de pedidos por cliente']
+  },
+  {
+    key: 'appointments', icon: '📅', name: 'Citas / Agenda',
+    desc: 'Permite a clientes agendar citas',
+    details: 'Perfecto para barberias, consultorios y servicios. El bot agenda citas preguntando fecha, hora y servicio deseado.',
+    features: ['Agendamiento por conversacion con confirmacion', 'Vista de calendario con citas del dia, semana y mes', 'El bot pregunta fecha y hora antes de confirmar', 'Recordatorios y seguimiento automatico']
+  },
+  {
+    key: 'quotes', icon: '💰', name: 'Cotizaciones',
+    desc: 'Genera cotizaciones automaticas',
+    details: 'El bot genera cotizaciones detalladas con desglose de productos, cantidades y precios basandose en tu catalogo.',
+    features: ['Cotizaciones automaticas por conversacion', 'Desglose de items con precios unitarios y total', 'Vigencia configurable de la cotizacion', 'Basado en los precios de tu catalogo']
+  },
+  {
+    key: 'followups', icon: '💛', name: 'Fidelizacion',
+    desc: 'Seguimiento automatico a clientes',
+    details: 'Envia mensajes de seguimiento automaticos a clientes que no han regresado en un tiempo. Ideal para mantener la relacion.',
+    features: ['Reglas configurables por tipo de trigger', 'Mensajes personalizables con plantillas', 'Seguimiento por dias despues de ultima visita, cita o compra', 'Registro de mensajes enviados y respuestas recibidas']
+  },
+  {
+    key: 'image_generation', icon: '🎨', name: 'Imagenes IA',
+    desc: 'Genera imagenes con inteligencia artificial',
+    details: 'Usa DALL-E de OpenAI para generar imagenes desde la plataforma. Util para crear contenido visual para tus productos o marketing.',
+    features: ['Generacion de imagenes con DALL-E 3', 'Descripciones en lenguaje natural', 'Multiples resoluciones disponibles', 'Requiere proveedor OpenAI configurado']
+  }
 ]
+
+// Order notification config
+const orderNotifyNumbers = ref([])
+const orderNotifyInput = ref('')
+const savingOrderConfig = ref(false)
+const savedOrderConfig = ref(false)
+const customerNotifications = ref({
+  confirmed: true,
+  preparing: true,
+  ready: true,
+  delivered: false,
+  cancelled: true
+})
+
+const customerNotifySteps = [
+  { key: 'confirmed', label: 'Pedido confirmado', preview: '"Tu pedido ha sido confirmado y sera procesado en breve."' },
+  { key: 'preparing', label: 'En preparacion', preview: '"Tu pedido esta siendo preparado. Te avisaremos cuando este listo."' },
+  { key: 'ready', label: 'Pedido listo', preview: '"Tu pedido esta listo para entrega."' },
+  { key: 'delivered', label: 'Entregado', preview: '"Tu pedido ha sido entregado. Gracias por elegirnos."' },
+  { key: 'cancelled', label: 'Cancelado', preview: '"Tu pedido ha sido cancelado."' }
+]
+
+function addOrderNotifyNumber() {
+  const num = orderNotifyInput.value.trim()
+  if (!num) return
+  if (!orderNotifyNumbers.value.includes(num)) {
+    orderNotifyNumbers.value.push(num)
+  }
+  orderNotifyInput.value = ''
+}
+
+function removeOrderNotifyNumber(idx) {
+  orderNotifyNumbers.value.splice(idx, 1)
+}
+
+async function saveOrderNotifyConfig() {
+  savingOrderConfig.value = true
+  savedOrderConfig.value = false
+  try {
+    await api.put('/modules/orders', {
+      enabled: true,
+      config: {
+        notifyNumbers: orderNotifyNumbers.value,
+        customerNotifications: customerNotifications.value
+      }
+    })
+    savedOrderConfig.value = true
+    setTimeout(() => savedOrderConfig.value = false, 3000)
+  } catch (e) {
+    alert('Error guardando configuracion de notificaciones')
+  } finally {
+    savingOrderConfig.value = false
+  }
+}
+
+// Team / Colaboradores
+const teamMembers = ref([])
+const showTeamForm = ref(false)
+const teamForm = ref({ name: '', email: '', password: '' })
+const teamFormError = ref('')
+
+// Business
+const businessForm = ref({ name: '', description: '', address: '', phone: '', hours: '', policies: '', extra_info: '' })
+const businessFormLoaded = ref(false)
+const savingBusiness = ref(false)
+const savedBusiness = ref(false)
+const generatingDesc = ref(false)
+const generatingPolicies = ref(false)
+const generatingExtraInfo = ref(false)
 
 // Whitelist
 const whitelist = ref([])
@@ -376,17 +1032,55 @@ onMounted(async () => {
   await settingsStore.fetchModules()
   await loadWhitelist()
   await loadMcpServers()
+  // Load order notification config
+  try {
+    const { data } = await api.get('/modules')
+    const ordersMod = (data.modules || []).find(m => m.key === 'orders')
+    if (ordersMod?.config) {
+      if (ordersMod.config.notifyNumbers) orderNotifyNumbers.value = ordersMod.config.notifyNumbers
+      if (ordersMod.config.customerNotifications) customerNotifications.value = { ...customerNotifications.value, ...ordersMod.config.customerNotifications }
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    const { data } = await api.get('/business')
+    if (data.business) {
+      businessForm.value = { ...data.business }
+      settingsStore.patchBusinessInfo(data.business)
+    }
+    businessFormLoaded.value = true
+  } catch (e) { /* ignore */ businessFormLoaded.value = true }
+  try {
+    const { data } = await api.get('/auth/agents')
+    teamMembers.value = data.agents || []
+  } catch (e) { /* ignore */ }
   try {
     const { data: s } = await api.get('/whatsapp/status')
     settingsStore.whatsappStatus = s.status || 'disconnected'
     const { data: q } = await api.get('/whatsapp/qr')
     if (q.qr) settingsStore.qrCode = q.qr
   } catch (e) { /* ignore */ }
+  // Fetch AI usage summary
+  fetchAiKeys()
+  aiUsageLoading.value = true
+  try {
+    const { data } = await api.get('/usage', { params: { period: 'month' } })
+    aiUsage.value = data.summary || null
+  } catch (e) { /* ignore */ } finally {
+    aiUsageLoading.value = false
+  }
 })
 
 watch(() => form.value?.whitelist_mode, (mode) => {
   if (mode === 'whitelist') loadWhitelist()
 })
+
+watch(
+  () => businessForm.value.name,
+  (name) => {
+    if (!businessFormLoaded.value) return
+    settingsStore.patchBusinessInfo({ name: name ?? '' })
+  }
+)
 
 async function save() {
   saving.value = true; saved.value = false
@@ -396,6 +1090,72 @@ async function save() {
     setTimeout(() => saved.value = false, 3000)
   } catch (e) { alert('Error guardando') }
   finally { saving.value = false }
+}
+
+async function createMember() {
+  teamFormError.value = ''
+  try {
+    const { data } = await api.post('/auth/agents', teamForm.value)
+    teamMembers.value.push({ ...data.agent, active: 1 })
+    showTeamForm.value = false
+    teamForm.value = { name: '', email: '', password: '' }
+  } catch (e) { teamFormError.value = e.response?.data?.error || 'Error al crear colaborador' }
+}
+
+async function deactivateMember(id) {
+  if (!confirm('Desactivar este colaborador? Ya no podra iniciar sesion.')) return
+  await api.delete(`/auth/agents/${id}`)
+  const member = teamMembers.value.find(m => m.id === id)
+  if (member) member.active = 0
+}
+
+async function saveBusiness() {
+  savingBusiness.value = true; savedBusiness.value = false
+  try {
+    const { data } = await api.put('/business', businessForm.value)
+    if (data?.business) {
+      settingsStore.patchBusinessInfo(data.business)
+      if (auth.user) {
+        auth.user = { ...auth.user, tenantName: data.business.name }
+        localStorage.setItem('user', JSON.stringify(auth.user))
+      }
+    } else {
+      await settingsStore.fetchBusinessInfo()
+    }
+    savedBusiness.value = true
+    setTimeout(() => savedBusiness.value = false, 3000)
+  } catch (e) { alert('Error guardando') }
+  finally { savingBusiness.value = false }
+}
+
+async function generateDescription() {
+  if (!businessForm.value.name?.trim() || generatingDesc.value) return
+  generatingDesc.value = true
+  try {
+    const { data } = await api.post('/business/generate-description', {
+      businessName: businessForm.value.name,
+      businessType: 'negocio'
+    })
+    if (data.description) businessForm.value.description = data.description
+  } catch (e) { alert('No se pudo generar la descripcion. Verifica tu configuracion de IA.') }
+  finally { generatingDesc.value = false }
+}
+
+async function generateField(field) {
+  if (!businessForm.value.name?.trim()) return
+  const loading = field === 'policies' ? generatingPolicies : generatingExtraInfo
+  if (loading.value) return
+  loading.value = true
+  try {
+    const { data } = await api.post('/business/generate-field', {
+      field,
+      businessName: businessForm.value.name,
+      businessType: 'negocio',
+      description: businessForm.value.description || ''
+    })
+    if (data.result) businessForm.value[field] = data.result
+  } catch (e) { alert('No se pudo generar. Verifica tu configuracion de IA.') }
+  finally { loading.value = false }
 }
 
 async function toggleModule(key) {

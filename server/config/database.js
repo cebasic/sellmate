@@ -14,7 +14,7 @@ async function initDb() {
     const dbUrl = process.env.JAWSDB_MARIA_URL || process.env.DATABASE_URL;
 
     if (dbUrl) {
-      pool = mysql.createPool(dbUrl + '?waitForConnections=true&connectionLimit=5&multipleStatements=true&dateStrings=true');
+      pool = mysql.createPool(dbUrl + '?waitForConnections=true&connectionLimit=5&multipleStatements=true&dateStrings=true&charset=utf8mb4');
     } else {
       pool = mysql.createPool({
         host: process.env.DB_HOST || 'localhost',
@@ -26,6 +26,7 @@ async function initDb() {
         connectionLimit: 5,
         multipleStatements: true,
         dateStrings: true,
+        charset: 'utf8mb4',
       });
     }
 
@@ -55,6 +56,29 @@ async function initDb() {
       // Module system migrations
       "ALTER TABLE settings ADD COLUMN business_type VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE settings ADD COLUMN setup_completed TINYINT(1) NOT NULL DEFAULT 0",
+      // utf8mb4 for emoji support
+      "ALTER TABLE messages CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "ALTER TABLE conversations CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "ALTER TABLE products CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "ALTER TABLE business_info CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "ALTER TABLE clients CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "ALTER TABLE settings ADD COLUMN bot_always_on TINYINT(1) NOT NULL DEFAULT 0",
+      "ALTER TABLE appointments ADD COLUMN confirm_token VARCHAR(64) DEFAULT NULL",
+      "ALTER TABLE appointments ADD COLUMN confirmed_at DATETIME DEFAULT NULL",
+      // AI keys migration
+      `CREATE TABLE IF NOT EXISTS ai_keys (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        label VARCHAR(255) NOT NULL DEFAULT '',
+        provider VARCHAR(20) NOT NULL DEFAULT 'openai',
+        api_key VARCHAR(500) NOT NULL,
+        model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
+        custom_endpoint VARCHAR(500) DEFAULT '',
+        is_active TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        INDEX idx_ai_keys_tenant (tenant_id)
+      )`,
     ];
     for (const sql of migrations) {
       try { await pool.execute(sql); } catch (e) { /* already exists */ }

@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  { path: '/', name: 'Landing', component: () => import('../views/Landing.vue'), meta: { public: true } },
   { path: '/login', name: 'Login', component: () => import('../views/Login.vue'), meta: { public: true } },
   { path: '/setup', name: 'SetupWizard', component: () => import('../views/SetupWizard.vue') },
-  { path: '/', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
+  { path: '/dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
   { path: '/products', name: 'Products', component: () => import('../views/Products.vue') },
   { path: '/business', name: 'Business', component: () => import('../views/BusinessInfo.vue') },
   { path: '/conversations', name: 'Conversations', component: () => import('../views/Conversations.vue') },
@@ -13,8 +14,11 @@ const routes = [
   { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
   { path: '/agents', name: 'Agents', component: () => import('../views/Agents.vue') },
   { path: '/modules', name: 'Modules', component: () => import('../views/Modules.vue') },
-  { path: '/ai-settings', name: 'AISettings', component: () => import('../views/AISettings.vue') },
-  { path: '/clients', name: 'Clients', component: () => import('../views/Clients.vue') }
+  { path: '/ai-settings', redirect: '/settings' },
+  { path: '/ai-usage', name: 'AIUsage', component: () => import('../views/AIUsage.vue'), meta: { requiresAuth: true } },
+  { path: '/clients', name: 'Clients', component: () => import('../views/Clients.vue') },
+  { path: '/orders', name: 'Orders', component: () => import('../views/Orders.vue') },
+  { path: '/cita/:token', name: 'AppointmentConfirm', component: () => import('../views/AppointmentConfirm.vue'), meta: { public: true } }
 ]
 
 const router = createRouter({
@@ -26,7 +30,10 @@ router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token')
   if (!to.meta.public && !token) {
     next('/login')
-  } else if (token && to.name !== 'SetupWizard' && to.name !== 'Login') {
+  } else if (token && to.name === 'Landing') {
+    // Authenticated users on landing page go to dashboard
+    next('/dashboard')
+  } else if (token && to.name !== 'SetupWizard' && to.name !== 'Login' && to.name !== 'Landing') {
     // Check if setup is completed
     try {
       const { useSettingsStore } = await import('../stores/settings')

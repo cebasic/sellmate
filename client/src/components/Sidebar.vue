@@ -5,7 +5,7 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-bold text-gray-900 dark:text-white">SellMate</h1>
-          <p v-if="auth.user?.tenantName" class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ auth.user.tenantName }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ businessSubtitle }}</p>
         </div>
         <button @click="togglePresence" class="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors"
           :class="settingsStore.onlineStatus
@@ -24,12 +24,17 @@
     <!-- Navigation -->
     <nav class="flex-1 p-3 space-y-0.5">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path"
+        @click="handleNavClick(item)"
         class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
         :class="$route.path === item.path
           ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
           : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'">
         <component :is="item.iconComponent" />
         {{ item.label }}
+        <span v-if="getBadgeCount(item.notifKey) > 0"
+          class="ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-orange-500 rounded-full leading-none">
+          {{ getBadgeCount(item.notifKey) > 99 ? '99+' : getBadgeCount(item.notifKey) }}
+        </span>
       </router-link>
     </nav>
 
@@ -69,11 +74,20 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useThemeStore } from '../stores/theme'
+import { useNotificationsStore } from '../stores/notifications'
 
 const auth = useAuthStore()
 const settingsStore = useSettingsStore()
 const theme = useThemeStore()
+const notifStore = useNotificationsStore()
 const router = useRouter()
+
+/** Negocio cargado desde API (business_info); si aún no hay fila, usar tenantName del login */
+const businessSubtitle = computed(() => {
+  const b = settingsStore.businessInfo
+  if (b != null) return b.name ?? ''
+  return auth.user?.tenantName ?? ''
+})
 
 // Fetch modules on mount
 onMounted(async () => {
@@ -81,6 +95,17 @@ onMounted(async () => {
     await settingsStore.fetchModules()
   } catch (e) { /* ignore */ }
 })
+
+function getBadgeCount(key) {
+  if (!key) return 0
+  return notifStore.unreadCounts[key] || 0
+}
+
+function handleNavClick(item) {
+  if (item.notifKey) {
+    notifStore.markSectionRead(item.notifKey)
+  }
+}
 
 // SVG icon components (Flowbite/Heroicons style)
 const icons = {
@@ -99,6 +124,9 @@ const icons = {
   agents: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
     h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' })
   ]),
+  orders: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' })
+  ]),
   appointments: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
     h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' })
   ]),
@@ -115,6 +143,9 @@ const icons = {
   modules: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
     h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' })
   ]),
+  aiUsage: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' })
+  ]),
   setup: () => h('svg', { class: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
     h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z' })
   ])
@@ -123,16 +154,18 @@ const icons = {
 const navItems = computed(() => {
   const mods = settingsStore.modules || {}
   const items = [
-    { path: '/', iconComponent: icons.dashboard, label: 'Dashboard' },
-    { path: '/conversations', iconComponent: icons.conversations, label: 'Conversaciones' },
+    { path: '/dashboard', iconComponent: icons.dashboard, label: 'Dashboard' },
+    { path: '/conversations', iconComponent: icons.conversations, label: 'Conversaciones', notifKey: 'conversations' },
     { path: '/products', iconComponent: icons.products, label: 'Productos' },
-    { path: '/clients', iconComponent: icons.clients, label: 'Clientes' },
-    { path: '/business', iconComponent: icons.business, label: 'Negocio' }
+    { path: '/clients', iconComponent: icons.clients, label: 'Clientes' }
   ]
 
   // Module-conditional items
+  if (mods.orders) {
+    items.push({ path: '/orders', iconComponent: icons.orders, label: 'Pedidos', notifKey: 'orders' })
+  }
   if (mods.appointments) {
-    items.push({ path: '/appointments', iconComponent: icons.appointments, label: 'Citas' })
+    items.push({ path: '/appointments', iconComponent: icons.appointments, label: 'Citas', notifKey: 'appointments' })
   }
   if (mods.followups) {
     items.push({ path: '/followups', iconComponent: icons.followups, label: 'Fidelizacion' })
@@ -140,7 +173,7 @@ const navItems = computed(() => {
 
   if (auth.isAdmin) {
     items.push(
-      { path: '/agents', iconComponent: icons.agents, label: 'Agentes' },
+      { path: '/ai-usage', iconComponent: icons.aiUsage, label: 'Consumo IA' },
       { path: '/settings', iconComponent: icons.settings, label: 'Ajustes' }
     )
   }

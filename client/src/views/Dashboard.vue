@@ -18,8 +18,17 @@
       </div>
     </div>
 
-    <!-- WhatsApp disconnected shortcut -->
-    <router-link v-if="auth.isAdmin && settingsStore.whatsappStatus !== 'connected'" to="/settings"
+    <!-- Loading state -->
+    <div v-if="loading" class="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6 animate-pulse">
+      <div class="w-5 h-5 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+      <div class="flex-1 space-y-1.5">
+        <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-48"></div>
+        <div class="h-2.5 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
+      </div>
+    </div>
+
+    <!-- WhatsApp disconnected shortcut (only after loading) -->
+    <router-link v-else-if="auth.isAdmin && settingsStore.whatsappStatus !== 'connected'" to="/settings"
       class="flex items-center gap-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors">
       <span class="w-2.5 h-2.5 rounded-full animate-pulse" :class="settingsStore.whatsappStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-400'"></span>
       <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
@@ -81,6 +90,7 @@ const convStore = useConversationsStore()
 const settingsStore = useSettingsStore()
 
 const stats = ref([])
+const loading = ref(true)
 
 // Topic label mapping
 const topicLabels = {
@@ -119,6 +129,12 @@ const statIcons = {
 }
 
 onMounted(async () => {
+  // Fetch WhatsApp status first so we don't flash the disconnected banner
+  try {
+    const { data } = await api.get('/whatsapp/status')
+    if (data.status) settingsStore.whatsappStatus = data.status
+  } catch (e) { /* ignore */ }
+
   await convStore.fetchConversations()
   const totalConvs = convStore.conversations.length
   const botConvs = convStore.conversations.filter(c => c.status === 'bot').length
@@ -137,10 +153,7 @@ onMounted(async () => {
     { label: 'Productos', value: totalProducts, iconComponent: statIcons.products, bgClass: 'bg-purple-100 dark:bg-purple-900/30' }
   ]
 
-  try {
-    const { data } = await api.get('/whatsapp/status')
-    if (data.status) settingsStore.whatsappStatus = data.status
-  } catch (e) { /* ignore */ }
+  loading.value = false
 })
 
 function statusBadge(status) {

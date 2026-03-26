@@ -98,7 +98,9 @@
                     <p class="font-medium text-gray-800 dark:text-white">{{ client.name || client.phone_number }}</p>
                   </div>
                 </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ client.phone_number }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                  <span v-if="parsePhone(client.phone_number).flag" class="mr-1">{{ parsePhone(client.phone_number).flag }}</span>{{ parsePhone(client.phone_number).localNumber }}
+                </td>
                 <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ client.email || '—' }}</td>
                 <td class="px-4 py-3">
                   <div class="flex flex-wrap gap-1">
@@ -164,6 +166,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../lib/api'
+import { parsePhone } from '../lib/phone'
 
 const clients = ref([])
 const loading = ref(true)

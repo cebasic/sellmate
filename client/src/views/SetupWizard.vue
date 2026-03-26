@@ -473,7 +473,7 @@ async function finishSetup() {
     await settingsStore.fetchSettings()
     await settingsStore.fetchModules()
 
-    router.push('/')
+    router.push('/dashboard')
   } catch (e) {
     error.value = e.response?.data?.error || 'Error al guardar la configuracion. Intenta de nuevo.'
   } finally {

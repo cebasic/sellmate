@@ -67,9 +67,7 @@
       v-if="showDetailModal && selectedAppointment"
       :appointment="selectedAppointment"
       @close="showDetailModal = false; selectedAppointment = null"
-      @update-status="handleStatusUpdate"
-      @send-ics="handleSendICS"
-      @download-ics="handleDownloadICS"
+      @saved="handleSaved"
     />
 
     <!-- New Appointment Modal -->
@@ -198,39 +196,11 @@ async function createAppointment() {
   }
 }
 
-async function handleStatusUpdate(appt, status) {
-  try {
-    await api.put(`/appointments/${appt.id}`, { status })
-    appt.status = status
-    // Update in list too
-    const idx = appointments.value.findIndex(a => a.id === appt.id)
-    if (idx !== -1) appointments.value[idx].status = status
-  } catch (e) { /* ignore */ }
-}
-
-async function handleSendICS(appt) {
-  try {
-    await api.post(`/appointments/${appt.id}/send-ics`)
-    alert('Mensaje enviado al cliente')
-  } catch (err) {
-    alert(err.response?.data?.error || 'Error enviando mensaje')
+function handleSaved(updatedAppt) {
+  const idx = appointments.value.findIndex(a => a.id === updatedAppt.id)
+  if (idx !== -1) {
+    appointments.value[idx] = updatedAppt
   }
-}
-
-async function handleDownloadICS(appt) {
-  try {
-    const response = await api.get(`/appointments/${appt.id}/ics`, { responseType: 'blob' })
-    const blob = new Blob([response.data], { type: 'text/calendar' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `cita-${appt.id}.ics`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  } catch (err) {
-    alert(err.response?.data?.error || 'Error descargando archivo ICS')
-  }
+  fetchAppointments()
 }
 </script>

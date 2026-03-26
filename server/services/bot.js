@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { generateResponse } = require('./ai');
 const { mcpManager } = require('./mcp');
@@ -74,8 +75,8 @@ async function handleIncomingMessage(tenantId, phoneNumber, contactName, message
     return null;
   }
 
-  // If business is offline, send offline message instead of bot response
-  if (settings && settings.online_status === 0) {
+  // If business is offline and bot_always_on is not enabled, send offline message
+  if (settings && settings.online_status === 0 && !settings.bot_always_on) {
     const offlineMsg = settings.farewell_message
       ? settings.farewell_message.replace('{bot_name}', settings.bot_name || 'SellMate')
       : 'En este momento no estamos disponibles. Te responderemos pronto.';
@@ -118,7 +119,15 @@ async function handleIncomingMessage(tenantId, phoneNumber, contactName, message
 
     const currentTopic = conversation.topic || null;
 
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = today.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    const isoDate = today.toISOString().split('T')[0];
+
     const systemPrompt = `Eres "${settings.bot_name}", asistente de ventas por WhatsApp del negocio "${business.name}".
+
+FECHA Y HORA ACTUAL: ${dateStr}, ${timeStr} (${isoDate}).
+Usa esta fecha como referencia para "hoy", "mañana", etc. Las fechas en el JSON deben ser formato YYYY-MM-DD.
 
 PERSONALIDAD: Se ${friendlinessDesc} (nivel ${settings.friendliness}/10).
 IDIOMA: Responde en el mismo idioma que el cliente.
@@ -154,6 +163,7 @@ Cuando el cliente envia una imagen, analízala cuidadosamente.
 ${moduleKeys.includes('appointments') ? `AGENDAMIENTO DE CITAS:
 Si el cliente quiere agendar una cita o servicio:
 1. Pregunta por fecha y hora preferida si no las menciono.
+IMPORTANTE: Cuando confirmes la cita, el sistema automaticamente le enviara al cliente un evento de calendario por WhatsApp. NO menciones archivos ICS ni calendarios en tu respuesta. Solo confirma la cita con los datos.
 2. Confirma los datos con el cliente antes de agendar.
 3. Cuando el cliente CONFIRME, incluye el campo "appointment" en tu respuesta JSON.
 4. Si el cliente no quiere cita o aun no ha confirmado, usa "appointment": null.` : ''}
@@ -272,26 +282,92 @@ IMPORTANTE: Tu respuesta debe ser UNICAMENTE el JSON, sin texto adicional, sin b
     // Create appointment if AI scheduled one (only when appointments module is enabled)
     if (moduleKeys.includes('appointments') && appointmentData && appointmentData.date && appointmentData.time) {
       try {
+        const confirmToken = crypto.randomBytes(16).toString('hex');
         const apptResult = await dbRun(
-          `INSERT INTO appointments (tenant_id, conversation_id, phone_number, contact_name, title, description, date, time, duration_minutes, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'bot')`,
+          `INSERT INTO appointments (tenant_id, conversation_id, phone_number, contact_name, title, description, date, time, duration_minutes, created_by, confirm_token)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'bot', ?)`,
           [tenantId, conversation.id, phoneNumber, contactName || phoneNumber,
            appointmentData.title || 'Cita', appointmentData.description || '',
            appointmentData.date, appointmentData.time,
-           appointmentData.duration_minutes || 60]
+           appointmentData.duration_minutes || 60, confirmToken]
         );
         const newAppt = await dbGet('SELECT * FROM appointments WHERE id = ?', [apptResult.lastInsertRowid]);
         if (io) {
           io.to(`tenant:${tenantId}`).emit('appointment:new', newAppt);
         }
         console.log(`Bot created appointment for ${phoneNumber}: ${appointmentData.title} on ${appointmentData.date} at ${appointmentData.time}`);
+
+        // Send WhatsApp native event to customer
+        try {
+          const duration = appointmentData.duration_minutes || 60;
+          const startDate = new Date(`${appointmentData.date}T${appointmentData.time}:00`);
+          const conn = wm._getConn(tenantId);
+          if (conn.sock && conn.status === 'connected') {
+            const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+            await conn.sock.sendMessage(jid, {
+              eventMessage: {
+                name: appointmentData.title || `Cita en ${business.name}`,
+                description: appointmentData.description || '',
+                location: { name: business.address || business.name || '' },
+                startTime: Math.floor(startDate.getTime() / 1000),
+                endTime: Math.floor(startDate.getTime() / 1000) + (duration * 60),
+              }
+            });
+            console.log(`[BOT] WhatsApp event sent to ${phoneNumber}`);
+          }
+        } catch (evtErr) {
+          console.error('Error sending WhatsApp event:', evtErr.message);
+        }
+
+        // Send confirmation link to customer
+        try {
+          const confirmUrl = `${process.env.APP_URL || 'http://localhost:3000'}/cita/${confirmToken}`;
+          await wm.sendMessage(tenantId, phoneNumber, `Puedes confirmar o ver los detalles de tu cita aqui:\n${confirmUrl}`);
+        } catch (linkErr) {
+          console.error('Error sending confirmation link:', linkErr.message);
+        }
       } catch (apptErr) {
         console.error('Error creating bot appointment:', apptErr.message);
       }
     }
 
-    // Send emoji reaction
-    if (emojiReaction && messageKey) {
+    // Create order if AI confirmed one (only when orders module is enabled)
+    const orderData = aiResult.order || null;
+    if (moduleKeys.includes('orders') && orderData && orderData.items && orderData.items.length > 0) {
+      try {
+        const orderResult = await dbRun(
+          `INSERT INTO orders (tenant_id, conversation_id, phone_number, contact_name, items, total, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [tenantId, conversation.id, phoneNumber, contactName || phoneNumber,
+           JSON.stringify(orderData.items), orderData.total || 0, orderData.notes || '']
+        );
+        const newOrder = await dbGet('SELECT * FROM orders WHERE id = ?', [orderResult.lastInsertRowid]);
+        if (io) io.to(`tenant:${tenantId}`).emit('order:new', newOrder);
+        console.log(`[BOT] Order created: ${orderResult.lastInsertRowid} for tenant ${tenantId}`);
+
+        // Send notification to configured numbers
+        try {
+          const notifyConfig = await dbGet('SELECT config FROM tenant_modules WHERE tenant_id = ? AND module_key = ?', [tenantId, 'orders']);
+          if (notifyConfig && notifyConfig.config) {
+            const config = JSON.parse(notifyConfig.config);
+            if (config.notifyNumbers && config.notifyNumbers.length > 0) {
+              const wmNotify = getWhatsAppManager();
+              const itemsList = orderData.items.map(i => `  • ${i.quantity}x ${i.name}`).join('\n');
+              const notifMsg = `🔔 *Nuevo pedido #${orderResult.lastInsertRowid}*\n\nCliente: ${contactName || phoneNumber}\n\n${itemsList}\n\nTotal: $${orderData.total || 0}\n${orderData.notes ? `\nNotas: ${orderData.notes}` : ''}`;
+              for (const num of config.notifyNumbers) {
+                try { await wmNotify.sendMessage(tenantId, num, notifMsg); } catch (e) { console.error('Notify error:', e.message); }
+              }
+            }
+          }
+        } catch (e) { console.error('Order notification error:', e.message); }
+      } catch (e) {
+        console.error('Error creating order:', e.message);
+      }
+    }
+
+    // Send emoji reaction (only WhatsApp-supported reaction emojis)
+    const validReactions = ['👍','❤️','😂','😮','😢','🙏','👏','🔥','🎉','💯','😍','🤔','👎','🤩','😡','💀','✅','❌'];
+    if (emojiReaction && messageKey && validReactions.includes(emojiReaction)) {
       try {
         await wm.sendReaction(tenantId, phoneNumber, messageKey, emojiReaction);
       } catch (e) {

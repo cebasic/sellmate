@@ -11,19 +11,48 @@ const MAX_TOOL_ROUNDS = 5; // Max tool-use iterations to prevent infinite loops
 
 // ────────────────── Usage Tracking ──────────────────
 
+// Cost per 1M tokens
+// Official pricing per 1M tokens (USD) - verified March 2026
+const MODEL_RATES = {
+  // OpenAI
+  'gpt-4.1-nano': { input: 0.10, output: 0.40 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-4.1-mini': { input: 0.40, output: 1.60 },
+  'o1-mini': { input: 1.10, output: 4.40 },
+  'o3-mini': { input: 1.10, output: 4.40 },
+  'o4-mini': { input: 1.10, output: 4.40 },
+  'gpt-4.1': { input: 2.00, output: 8.00 },
+  'o3': { input: 2.00, output: 8.00 },
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'chatgpt-4o-latest': { input: 2.50, output: 10.00 },
+  'gpt-4-turbo': { input: 10.00, output: 30.00 },
+  'o1': { input: 15.00, output: 60.00 },
+  // Anthropic
+  'claude-haiku-4-5': { input: 1.00, output: 5.00 },
+  'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
+  'claude-sonnet-4-5': { input: 3.00, output: 15.00 },
+  'claude-sonnet-4-0': { input: 3.00, output: 15.00 },
+  'claude-opus-4-6': { input: 5.00, output: 25.00 },
+  'claude-opus-4-5': { input: 5.00, output: 25.00 },
+  'claude-opus-4-0': { input: 15.00, output: 75.00 },
+  'claude-opus-4-1': { input: 15.00, output: 75.00 },
+  // Gemini
+  'gemini-2.0-flash': { input: 0.10, output: 0.40 },
+  'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+  'gemini-2.5-pro': { input: 1.25, output: 10.00 },
+};
+
+function getModelRate(model) {
+  if (MODEL_RATES[model]) return MODEL_RATES[model];
+  // Try prefix match (e.g., "gpt-4o-2024-08-06" matches "gpt-4o")
+  const prefix = Object.keys(MODEL_RATES).find(k => model.startsWith(k));
+  if (prefix) return MODEL_RATES[prefix];
+  return { input: 1.00, output: 2.00 }; // default fallback
+}
+
 async function trackUsage(tenantId, provider, model, inputTokens, outputTokens, requestType = 'chat') {
   const totalTokens = inputTokens + outputTokens;
-  // Rough cost estimates per 1M tokens
-  const costs = {
-    'gpt-4o-mini': { input: 0.15, output: 0.60 },
-    'gpt-4o': { input: 2.50, output: 10.00 },
-    'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
-    'claude-haiku-4-5': { input: 0.80, output: 4.00 },
-    'gemini-2.0-flash': { input: 0.10, output: 0.40 },
-    'gemini-2.5-flash-preview-05-20': { input: 0.15, output: 0.60 },
-    'gemini-2.5-pro-preview-05-06': { input: 1.25, output: 10.00 },
-  };
-  const rate = costs[model] || { input: 1.00, output: 3.00 };
+  const rate = getModelRate(model);
   const costEstimate = (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000;
 
   try {
@@ -109,13 +138,21 @@ function makeRequest(options, body) {
  * Parse a structured JSON response from the AI.
  */
 function parseStructuredResponse(text) {
-  const defaultResult = { response: text, topic: null, emoji_reaction: null, appointment: null };
+  const defaultResult = { response: text, topic: null, emoji_reaction: null, appointment: null, order: null, quote: null };
   if (!text) return defaultResult;
 
   try {
     let jsonStr = text.trim();
-    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+    // Try extracting from markdown code fences
+    const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+    // Try extracting JSON object from mixed text (text before/after JSON)
+    if (!jsonStr.startsWith('{')) {
+      const jsonObjMatch = jsonStr.match(/\{[\s\S]*"response"\s*:\s*"[\s\S]*\}/);
+      if (jsonObjMatch) jsonStr = jsonObjMatch[0];
+    }
 
     const parsed = JSON.parse(jsonStr);
     if (parsed && typeof parsed.response === 'string') {
@@ -123,7 +160,9 @@ function parseStructuredResponse(text) {
         response: parsed.response,
         topic: parsed.topic || null,
         emoji_reaction: parsed.emoji_reaction || null,
-        appointment: parsed.appointment || null
+        appointment: parsed.appointment || null,
+        order: parsed.order || null,
+        quote: parsed.quote || null
       };
     }
   } catch (e) { /* not valid JSON */ }

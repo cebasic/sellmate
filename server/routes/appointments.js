@@ -1,6 +1,8 @@
 const express = require('express');
+const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../config/database');
 const { authMiddleware, adminOnly, requireTenant } = require('../middleware/auth');
+const { whatsappManager } = require('../services/whatsapp');
 
 const router = express.Router();
 
@@ -26,6 +28,38 @@ router.get('/', authMiddleware, requireTenant, async (req, res) => {
   query += ' ORDER BY date ASC, time ASC';
   const appointments = await dbAll(query, params);
   res.json({ appointments });
+});
+
+// GET /api/appointments/confirm/:token - Public page data (NO auth)
+router.get('/confirm/:token', async (req, res) => {
+  try {
+    const appt = await dbGet(
+      `SELECT a.*, b.name as business_name, b.address as business_address, b.phone as business_phone
+       FROM appointments a
+       LEFT JOIN business_info b ON a.tenant_id = b.tenant_id
+       WHERE a.confirm_token = ?`,
+      [req.params.token]
+    );
+    if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
+    res.json({ appointment: appt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/appointments/confirm/:token - Confirm appointment (public, NO auth)
+router.post('/confirm/:token', async (req, res) => {
+  try {
+    const appt = await dbGet('SELECT * FROM appointments WHERE confirm_token = ?', [req.params.token]);
+    if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
+    if (appt.status === 'confirmed') return res.json({ appointment: appt, message: 'Ya confirmada' });
+
+    await dbRun('UPDATE appointments SET status = ?, confirmed_at = NOW() WHERE id = ?', ['confirmed', appt.id]);
+    const updated = await dbGet('SELECT * FROM appointments WHERE id = ?', [appt.id]);
+    res.json({ appointment: updated, message: 'Cita confirmada exitosamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/appointments/upcoming - Upcoming appointments
@@ -58,12 +92,14 @@ router.post('/', authMiddleware, requireTenant, async (req, res) => {
   const conversation = await dbGet('SELECT id FROM conversations WHERE tenant_id = ? AND phone_number = ?',
     [req.tenantId, phone_number]);
 
+  const confirmToken = crypto.randomBytes(16).toString('hex');
+
   const result = await dbRun(
-    `INSERT INTO appointments (tenant_id, conversation_id, phone_number, contact_name, title, description, date, time, duration_minutes, notes, created_by, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (tenant_id, conversation_id, phone_number, contact_name, title, description, date, time, duration_minutes, notes, created_by, created_by_user_id, confirm_token)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [req.tenantId, conversation?.id || null, phone_number, contact_name || '',
      title, description || '', date, time, duration_minutes || 60, notes || '',
-     'agent', req.user.id]
+     'agent', req.user.id, confirmToken]
   );
 
   const appointment = await dbGet('SELECT * FROM appointments WHERE id = ?', [result.lastInsertRowid]);
@@ -82,12 +118,15 @@ router.put('/:id', authMiddleware, requireTenant, async (req, res) => {
     [Number(req.params.id), req.tenantId]);
   if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
 
-  const { title, description, date, time, duration_minutes, status, notes } = req.body;
+  const { title, description, date, time, duration_minutes, status, notes, notify_customer } = req.body;
+  const oldStatus = existing.status;
+  const newStatus = status ?? existing.status;
+
   await dbRun(
     `UPDATE appointments SET title=?, description=?, date=?, time=?, duration_minutes=?, status=?, notes=? WHERE id=? AND tenant_id=?`,
     [title ?? existing.title, description ?? existing.description,
      date ?? existing.date, time ?? existing.time,
-     duration_minutes ?? existing.duration_minutes, status ?? existing.status,
+     duration_minutes ?? existing.duration_minutes, newStatus,
      notes ?? existing.notes, Number(req.params.id), req.tenantId]
   );
 
@@ -96,6 +135,19 @@ router.put('/:id', authMiddleware, requireTenant, async (req, res) => {
   const io = req.app.get('io');
   if (io) {
     io.to(`tenant:${req.tenantId}`).emit('appointment:updated', appointment);
+  }
+
+  // Send WhatsApp notification if requested and status changed
+  if (notify_customer && oldStatus !== newStatus && appointment.phone_number) {
+    const business = await dbGet('SELECT name FROM business_info WHERE tenant_id = ?', [req.tenantId]);
+    const statusMessages = {
+      confirmed: `Tu cita "${appointment.title}" ha sido confirmada para el ${appointment.date} a las ${appointment.time}.\n\n-- ${business?.name || ''}`,
+      cancelled: `Tu cita "${appointment.title}" del ${appointment.date} ha sido cancelada. Contactanos si deseas reagendar.\n\n-- ${business?.name || ''}`,
+      completed: `Tu cita "${appointment.title}" ha sido marcada como completada. Gracias por tu visita.\n\n-- ${business?.name || ''}`
+    };
+    if (statusMessages[newStatus]) {
+      try { await whatsappManager.sendMessage(req.tenantId, appointment.phone_number, statusMessages[newStatus]); } catch(e) { console.error('WhatsApp notify error:', e.message); }
+    }
   }
 
   res.json({ appointment });

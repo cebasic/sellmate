@@ -31,7 +31,9 @@
             </div>
             <div>
               <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ conv.contact_name || conv.phone_number }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ conv.phone_number }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <span v-if="parsePhone(conv.phone_number).flag" class="mr-1">{{ parsePhone(conv.phone_number).flag }}</span>{{ parsePhone(conv.phone_number).localNumber }}
+              </p>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -54,6 +56,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { useConversationsStore } from '../stores/conversations'
+import { parsePhone } from '../lib/phone'
 
 const convStore = useConversationsStore()
 const activeFilter = ref('')

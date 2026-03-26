@@ -4,6 +4,7 @@ import api from '../lib/api'
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref(null)
+  const businessInfo = ref(null)
   const whatsappStatus = ref('disconnected')
   const qrCode = ref('')
   const waError = ref('')
@@ -20,6 +21,21 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  async function fetchBusinessInfo() {
+    try {
+      const { data } = await api.get('/business')
+      businessInfo.value = data?.business || null
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Merge partial business fields (e.g. name while editing) so UI like the sidebar stays in sync */
+  function patchBusinessInfo(partial) {
+    if (!partial || typeof partial !== 'object') return
+    businessInfo.value = businessInfo.value
+      ? { ...businessInfo.value, ...partial }
+      : { ...partial }
+  }
+
   async function updateSettings(payload) {
     const { data } = await api.put('/settings', payload)
     settings.value = data.settings
@@ -34,7 +50,16 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchModules() {
     try {
       const { data } = await api.get('/modules')
-      modules.value = data.modules || {}
+      // API returns array of { key, enabled, ... } — convert to { key: boolean } map
+      if (Array.isArray(data.modules)) {
+        const map = {}
+        for (const m of data.modules) {
+          map[m.key] = !!m.enabled
+        }
+        modules.value = map
+      } else {
+        modules.value = data.modules || {}
+      }
     } catch (e) {
       modules.value = {}
     }
@@ -46,7 +71,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   return {
-    settings, whatsappStatus, qrCode, waError, onlineStatus, modules, setupCompleted,
-    fetchSettings, updateSettings, toggleOnlineStatus, fetchModules, toggleModule
+    settings, businessInfo, whatsappStatus, qrCode, waError, onlineStatus, modules, setupCompleted,
+    fetchSettings, updateSettings, toggleOnlineStatus, fetchModules, toggleModule, fetchBusinessInfo, patchBusinessInfo
   }
 })

@@ -203,6 +203,21 @@ CREATE TABLE IF NOT EXISTS tenant_modules (
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
+-- AI API keys (multiple per tenant)
+CREATE TABLE IF NOT EXISTS ai_keys (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NOT NULL,
+  label VARCHAR(255) NOT NULL DEFAULT '',
+  provider VARCHAR(20) NOT NULL DEFAULT 'openai',
+  api_key VARCHAR(500) NOT NULL,
+  model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
+  custom_endpoint VARCHAR(500) DEFAULT '',
+  is_active TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  INDEX idx_ai_keys_tenant (tenant_id)
+);
+
 -- AI usage tracking per tenant
 CREATE TABLE IF NOT EXISTS ai_usage (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -217,6 +232,24 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   INDEX idx_ai_usage_tenant_date (tenant_id, created_at)
+);
+
+-- Orders per tenant
+CREATE TABLE IF NOT EXISTS orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NOT NULL,
+  conversation_id INT,
+  phone_number VARCHAR(50) NOT NULL,
+  contact_name VARCHAR(255) DEFAULT '',
+  items TEXT NOT NULL,
+  total DOUBLE NOT NULL DEFAULT 0,
+  notes TEXT DEFAULT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+  INDEX idx_orders_tenant_status (tenant_id, status)
 );
 
 -- Clients / Contacts per tenant

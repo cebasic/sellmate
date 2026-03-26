@@ -1,12 +1,14 @@
 import { io } from 'socket.io-client'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
+import { useNotificationsStore } from '../stores/notifications'
 
 let socket = null
 
 export function useSocket() {
   const convStore = useConversationsStore()
   const settingsStore = useSettingsStore()
+  const notifStore = useNotificationsStore()
 
   function connect() {
     const token = localStorage.getItem('token')
@@ -37,10 +39,55 @@ export function useSocket() {
 
     socket.on('message:new', (data) => {
       convStore.addMessage(data)
+      const name = data.conversation?.contact_name || data.conversation?.phone || 'Cliente'
+      notifStore.addNotification({
+        type: 'conversations',
+        title: 'Nuevo mensaje',
+        message: `${name}: ${(data.message?.content || '').slice(0, 60)}`,
+        link: `/conversations/${data.conversation?.id || ''}`
+      })
     })
 
     socket.on('conversation:updated', (conv) => {
       convStore.updateConversation(conv)
+    })
+
+    socket.on('order:new', (order) => {
+      const name = order.client_name || order.phone || 'Cliente'
+      notifStore.addNotification({
+        type: 'orders',
+        title: 'Nuevo pedido',
+        message: `Pedido de ${name}`,
+        link: '/orders'
+      })
+    })
+
+    socket.on('order:updated', (order) => {
+      notifStore.addNotification({
+        type: 'orders',
+        title: 'Pedido actualizado',
+        message: `Pedido #${order.id} → ${order.status}`,
+        link: '/orders'
+      })
+    })
+
+    socket.on('appointment:new', (appt) => {
+      const name = appt.client_name || appt.phone || 'Cliente'
+      notifStore.addNotification({
+        type: 'appointments',
+        title: 'Nueva cita',
+        message: `Cita con ${name}`,
+        link: '/appointments'
+      })
+    })
+
+    socket.on('appointment:updated', (appt) => {
+      notifStore.addNotification({
+        type: 'appointments',
+        title: 'Cita actualizada',
+        message: `Cita #${appt.id} actualizada`,
+        link: '/appointments'
+      })
     })
 
     socket.on('whatsapp:qr', (qr) => {
@@ -91,9 +138,17 @@ export function useSocket() {
     }
   }
 
+  function on(event, handler) {
+    if (socket) socket.on(event, handler)
+  }
+
+  function off(event, handler) {
+    if (socket) socket.off(event, handler)
+  }
+
   function isConnected() {
     return socket?.connected || false
   }
 
-  return { connect, disconnect, emit, isConnected }
+  return { connect, disconnect, emit, on, off, isConnected }
 }
