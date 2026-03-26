@@ -14,7 +14,7 @@ async function initDb() {
     const dbUrl = process.env.JAWSDB_MARIA_URL || process.env.DATABASE_URL;
 
     if (dbUrl) {
-      pool = mysql.createPool(dbUrl + '?waitForConnections=true&connectionLimit=5&multipleStatements=true');
+      pool = mysql.createPool(dbUrl + '?waitForConnections=true&connectionLimit=5&multipleStatements=true&dateStrings=true');
     } else {
       pool = mysql.createPool({
         host: process.env.DB_HOST || 'localhost',
@@ -25,6 +25,7 @@ async function initDb() {
         waitForConnections: true,
         connectionLimit: 5,
         multipleStatements: true,
+        dateStrings: true,
       });
     }
 
