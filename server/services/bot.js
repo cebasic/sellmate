@@ -11,10 +11,12 @@ function getWhatsAppManager() {
  * Handles incoming messages and generates bot responses.
  * Now tenant-aware: all queries scoped to tenantId.
  */
-async function handleIncomingMessage(tenantId, phoneNumber, contactName, messageContent, messageType, io, messageKey, imageBase64 = null) {
-  // Check whitelist mode
+async function handleIncomingMessage(tenantId, phoneNumber, contactName, messageContent, messageType, io, messageKey, imageBase64 = null, options = {}) {
+  const { isLid = false } = options;
+
+  // Check whitelist mode (skip for LID numbers — they can't be matched to real phone numbers)
   const settings = await dbGet('SELECT * FROM settings WHERE tenant_id = ?', [tenantId]);
-  if (settings && settings.whitelist_mode === 'whitelist') {
+  if (settings && settings.whitelist_mode === 'whitelist' && !isLid) {
     const allowed = await dbGet('SELECT id FROM whitelist WHERE tenant_id = ? AND phone_number = ?', [tenantId, phoneNumber]);
     if (!allowed) {
       const withoutPlus = phoneNumber.replace(/^\+/, '');

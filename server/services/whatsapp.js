@@ -228,8 +228,13 @@ class WhatsAppManager {
         if (msg.key.fromMe) continue;
         if (!msg.message) continue;
 
-        const phoneNumber = msg.key.remoteJid.replace('@s.whatsapp.net', '');
-        console.log(`[WA:${tenantId}] Extracted phone: ${phoneNumber}, pushName: ${msg.pushName}`);
+        const remoteJid = msg.key.remoteJid;
+        // Skip group messages
+        if (remoteJid.endsWith('@g.us')) continue;
+
+        const isLid = remoteJid.endsWith('@lid');
+        const phoneNumber = remoteJid.replace(/@(s\.whatsapp\.net|lid)$/, '');
+        console.log(`[WA:${tenantId}] Extracted phone: ${phoneNumber}, pushName: ${msg.pushName}, isLid: ${isLid}`);
         const contactName = msg.pushName || '';
 
         let content = '';
@@ -264,7 +269,7 @@ class WhatsAppManager {
         }
 
         const botResponse = await handleIncomingMessage(
-          tenantId, phoneNumber, contactName, content, messageType, this.io, msg.key, imageBase64
+          tenantId, phoneNumber, contactName, content, messageType, this.io, msg.key, imageBase64, { isLid }
         );
 
         if (botResponse && conn.sock) {
