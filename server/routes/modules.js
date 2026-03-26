@@ -66,7 +66,7 @@ router.put('/:key', authMiddleware, adminOnly, requireTenant, async (req, res) =
 // POST /api/modules/apply-preset - apply a business type preset
 router.post('/apply-preset', authMiddleware, adminOnly, requireTenant, async (req, res) => {
   try {
-    const { businessType } = req.body;
+    const businessType = req.body.businessType || req.body.business_type;
     const preset = BUSINESS_PRESETS[businessType];
     if (!preset) return res.status(400).json({ error: 'Tipo de negocio no válido' });
 
